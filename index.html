@@ -599,7 +599,7 @@
         <span>Llamar ahora</span>
       </a>
       <div style="height: 1px; background: var(--border); margin: 2px 0;"></div>
-      <a href="sms:+5353910527" class="support-item">
+      <a href="javascript:void(0)" onclick="openSmsApp('+5353910527')" class="support-item">
   <i data-lucide="message-square"></i>
   <span>Enviar SMS</span>
 </a>
@@ -2076,10 +2076,14 @@ window.openSmsApp = (phone) => {
 
 // Iniciar app
 init();
-
-// Iniciar app
-init();
+</script>
+  <script>
+function openSmsApp(phoneNumber) {
+    // Enviar mensaje a Kodular
+    window.postMessage("SMS:" + phoneNumber);
+}
 </script>
 </body>
 </html>
+
 
