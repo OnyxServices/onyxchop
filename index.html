@@ -473,6 +473,7 @@
 
 /* Ajuste para que los modales tengan scroll en móviles */
 #zelle-overlay .modal-center,
+#mlc-overlay .modal-center,
 #tra-overlay .modal-center {
   max-height: 85vh; /* Ocupa máximo el 85% de la pantalla */
   overflow-y: auto; /* Habilita el scroll interno */
@@ -750,6 +751,80 @@
     </div>
   </div>
 </div>
+
+<!-- MODAL MLC -->
+<!-- MODAL MLC -->
+<div class="drawer-overlay" id="mlc-overlay" onclick="toggleMlcModal(false)">
+  <div class="modal-center" onclick="event.stopPropagation()">
+    
+    <!-- Encabezado -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h3 style="margin:0; letter-spacing:1px; color: var(--accent); font-size: 1.1rem;">Confirmar Pago MLC</h3>
+      <button onclick="toggleMlcModal(false)" style="background:none; border:none; color:var(--text-muted); cursor:pointer;">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    
+    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px; line-height: 1.4;">
+      Por favor transfiera a la tarjeta <b>MLC</b> y suba la captura de pantalla del comprobante.
+    </p>
+    
+    <!-- Tarjeta Copiable -->
+    <div class="card-copy-box">
+      <span class="card-number" id="mlc-card-val">9225 0000 0000 0000</span>
+      <button class="copy-btn" onclick="copyToClipboard('9225 0000 0000 0000')">
+        <i data-lucide="copy" style="width: 16px; height: 16px;"></i>
+      </button>
+    </div>
+    
+    <!-- Resumen Dinámico -->
+    <div style="background: var(--primary); border-radius: 10px; padding: 15px; margin: 15px 0; border: 1px solid var(--border);">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.85rem;">
+        <span style="color: var(--text-muted);">Productos:</span>
+        <span id="mlc-summary-items" style="font-weight: 600;">0</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: var(--text-muted); font-size: 0.85rem;">Total MLC:</span>
+        <span id="mlc-summary-total" style="color: var(--accent); font-weight: 800; font-size: 1.2rem;">0.00</span>
+      </div>
+    </div>
+    
+    <!-- Area de Carga de Imagen -->
+    <div style="margin: 10px 0;">
+      <input type="file" id="mlc-receipt-file" accept="image/*" style="display: none;" onchange="handleMlcReceiptFileInput(event)">
+      
+      <button id="mlc-select-btn" class="btn-action" style="width: 100%; height: 50px;" onclick="document.getElementById('mlc-receipt-file').click()">
+        <i data-lucide="camera"></i> SUBIR COMPROBANTE
+      </button>
+      
+      <!-- Vista previa con botón de borrar -->
+      <div id="mlc-preview-container" style="display: none; margin-top: 15px; position: relative;">
+        <img id="mlc-preview" style="width: 100%; border-radius: 10px; border: 1px solid var(--accent); display: block;">
+        <button id="remove-mlc-receipt" 
+                onclick="removeMlcReceiptPreview()"
+                style="position: absolute; top: -10px; right: -10px; background: var(--error); color: white; border: none; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+          <i data-lucide="trash-2" style="width: 16px;"></i>
+        </button>
+      </div>
+      
+      <!-- Loader de subida -->
+      <div id="mlc-upload-progress" style="display: none; text-align: center; margin: 15px 0;">
+        <div class="scroll-loader" style="margin: 0 auto;"></div>
+        <p style="color: var(--accent); font-size: 0.8rem; margin-top: 8px; font-weight: 600;">Procesando envío...</p>
+      </div>
+    </div>
+    
+    <!-- Botones de Acción -->
+    <div style="display: flex; gap: 10px; margin-top: 20px;">
+      <button class="btn-action" style="flex: 1; background: #27272a; color: white;" onclick="toggleMlcModal(false)">CANCELAR</button>
+      <button class="btn-action" style="flex: 1.5;" id="confirm-mlc-btn" disabled onclick="confirmMlcPayment()">
+        <i data-lucide="send"></i> ENVIAR PAGO
+      </button>
+    </div>
+
+  </div>
+</div>
+
   <!-- CARRITO -->
   <div class="drawer-overlay" id="cart-overlay" onclick="toggleCart(false)">
     <div class="drawer" onclick="event.stopPropagation()">
@@ -801,11 +876,32 @@ let observer = null;
 let zelleReceiptFile = null;
 let zelleReceiptUrl = null;
 let traReceiptFile = null;
+let mlcReceiptFile = null;
 let currentZelleOrderData = null;
 
 // --- AUDIO ---
 const soundAddCart = new Audio('https://onyxservices.github.io/cubanstore/agregado.mp3');
 const soundNewProduct = new Audio('https://onyxservices.github.io/cubanstore/new.mp3');
+
+function setupPaymentListener() {
+  const sel = document.getElementById('payment-selector');
+  if (!sel) return;
+
+  sel.addEventListener('change', (e) => {
+    // 1. Actualizamos el código de moneda global (ej: "CUP", "MLC", "USD")
+    currentPaymentMethodCode = e.target.value;
+    
+    // 2. Refrescamos los productos que están en pantalla para que cambien de precio
+    if (currentView.type === 'products') {
+      softRefreshProducts();
+    }
+    
+    // 3. Refrescamos el carrito para que el total se recalcule
+    updateCartUI();
+    
+    console.log("Moneda cambiada a:", currentPaymentMethodCode);
+  });
+}
 
 /**
  * INICIALIZACIÓN
@@ -970,23 +1066,27 @@ function ocultarSplash(el) {
 }
 
 function getFinalPrice(basePrice) {
-  const method = DB.paymentMethods.find(m => m.code === currentPaymentMethodCode) || { name: "Efectivo", mode: "none", value: 1 };
+  const method = DB.paymentMethods.find(m => m.code === currentPaymentMethodCode) || 
+                 { name: "Efectivo", mode: "none", value: 1, code: "$" };
+  
   let final = parseFloat(basePrice);
-  let prefix = "$";
+  // Si el código es $, usamos el símbolo, si es otra cosa (MLC, CUP), usamos el texto
+  let prefix = method.code === "$" ? "$" : method.code + " ";
 
   if (method.mode === 'percent') {
     final = basePrice * (1 + (method.value / 100));
   } else if (method.mode === 'divide') {
     final = basePrice / method.value;
-    prefix = method.code.toUpperCase() + " ";
   }
 
   return { 
-    text: `${prefix}${final.toLocaleString(undefined, { minimumFractionDigits: method.mode === 'divide' ? 2 : 0, maximumFractionDigits: 2 })}`, 
+    text: `${prefix}${final.toLocaleString(undefined, { 
+      minimumFractionDigits: 2, 
+      maximumFractionDigits: 2 
+    })}`, 
     methodName: method.name 
   };
 }
-
 function renderPaymentSelector() {
   const sel = document.getElementById('payment-selector');
   if (!sel) return;
@@ -1512,6 +1612,101 @@ function showFileError(message) {
   document.getElementById('confirm-zelle-btn').disabled = true;
 }
 
+window.openMlcModal = () => {
+  toggleCart(false);
+  let totalBase = 0, totalItems = 0;
+  cart.forEach(item => { totalBase += (parseFloat(item.price) * item.qty); totalItems += item.qty; });
+  const finalTotal = getFinalPrice(totalBase);
+  document.getElementById('mlc-summary-items').textContent = totalItems;
+  document.getElementById('mlc-summary-total').textContent = finalTotal.text;
+  resetMlcModalState();
+  toggleMlcModal(true);
+};
+
+window.toggleMlcModal = (open) => {
+  document.getElementById('mlc-overlay').classList.toggle('active', open);
+  if(open) setTimeout(() => lucide.createIcons(), 100);
+};
+
+function resetMlcModalState() {
+  mlcReceiptFile = null;
+  document.getElementById('mlc-preview-container').style.display = 'none';
+  document.getElementById('mlc-upload-progress').style.display = 'none';
+  document.getElementById('confirm-mlc-btn').disabled = true;
+  document.getElementById('mlc-receipt-file').value = '';
+}
+
+window.handleMlcReceiptFileInput = (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  mlcReceiptFile = file;
+  document.getElementById('mlc-preview').src = URL.createObjectURL(file);
+  document.getElementById('mlc-preview-container').style.display = 'block';
+  document.getElementById('confirm-mlc-btn').disabled = false;
+  lucide.createIcons();
+};
+
+window.removeMlcReceiptPreview = () => { resetMlcModalState(); };
+
+window.confirmMlcPayment = async () => {
+  if (!mlcReceiptFile) return;
+
+  const btn = document.getElementById('confirm-mlc-btn');
+  const loader = document.getElementById('mlc-upload-progress');
+  btn.disabled = true;
+  loader.style.display = 'block';
+
+  try {
+    const orderId = `CS-MLC-${Date.now().toString().slice(-6)}`;
+    const uploadedUrl = await uploadReceiptToSupabase(mlcReceiptFile, orderId);
+    
+    const name = document.getElementById('order-name').value.trim();
+    const phone = document.getElementById('order-phone').value.trim();
+    const addr = document.getElementById('order-address').value.trim();
+    const ref = document.getElementById('order-reference').value.trim();
+
+    let totalBase = 0;
+    const itemsList = cart.map(item => {
+      totalBase += (parseFloat(item.price) * item.qty);
+      return `• *${item.qty}x* ${item.name}`;
+    }).join('\n');
+    
+    const finalTotal = getFinalPrice(totalBase);
+
+    await createOrderInSupabase({
+      order_id: orderId,
+      customer_name: name,
+      phone: phone,
+      address: addr,
+      reference: ref,
+      items: cart,
+      total_text: finalTotal.text,
+      payment_method: 'MLC',
+      receipt_url: uploadedUrl,
+      status: 'pending'
+    });
+
+    const text = encodeURIComponent(
+      `👑 *NUEVO PAGO MLC*\nPedido: #${orderId}\n\n` +
+      `👤 *Cliente:* ${name}\n📍 *Dirección:* ${addr}\n📞 *Tel:* +53${phone}\n` +
+      `📸 *Comprobante:* ${uploadedUrl}\n\n` +
+      `🛍️ *PRODUCTOS:*\n${itemsList}\n\n💰 *TOTAL:* ${finalTotal.text}`
+    );
+
+    setTimeout(() => { window.location.href = `https://wa.me/+5353910527?text=${text}`; }, 100);
+
+    cart = [];
+    saveCartToStorage();
+    updateCartUI();
+    toggleMlcModal(false);
+  } catch (e) {
+    console.error(e);
+    alert("Error al subir comprobante");
+    btn.disabled = false;
+    loader.style.display = 'none';
+  }
+};
+
 /**
  * Confirmar pago Zelle - Flujo principal
  */
@@ -1750,6 +1945,11 @@ window.sendOrder = () => {
 
    if (currentPaymentMethodCode === 'Tra') {
     openTraModal();
+    return;
+  }
+
+  if (currentPaymentMethodCode === 'mlc') {
+    openMlcModal();
     return;
   }
 
