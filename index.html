@@ -19,7 +19,6 @@
       --primary: #09090B;      /* Negro Zinc profundo */
       --secondary: #18181B;    /* Gris oscuro para tarjetas */
       --accent: #D4AF37;       /* Dorado Metálico */
-      --accent-hover: #F1C40F; /* Dorado brillante */
       --bg-site: #020617;      /* Fondo ultra oscuro */
       --text-main: #FAFAFA;
       --text-muted: #A1A1AA;
@@ -398,37 +397,8 @@
       display: flex; align-items: center; justify-content: center;
       background: var(--primary); border: 2px solid var(--accent);
       border-radius: 50%; width: 45px; height: 45px; opacity: 1;
-    }
-
-    /* Estilo para el cuadro de copiado de tarjeta */
-    .card-copy-container {
-      background: var(--primary);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px;
-      margin: 15px 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-    }
-    .card-number-text {
-      font-family: monospace;
-      font-size: 1rem;
-      color: var(--accent);
-      letter-spacing: 1px;
-    }
-    .btn-copy-mini {
-      background: var(--secondary);
-      border: 1px solid var(--accent);
-      color: var(--accent);
-      padding: 5px 8px;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: var(--transition);
-      display: flex;
-      align-items: center;
-    }
+    }  
+    
     .btn-copy-mini:active {
       transform: scale(0.9);
       background: var(--accent);
@@ -506,6 +476,60 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* Bocadillo de Soporte */
+    .support-popover {
+      position: absolute;
+      bottom: 80px; /* Aparece arriba del footer */
+      left: 15px;
+      background: var(--secondary);
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      width: 180px;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(15px) scale(0.9);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 2000;
+    }
+
+    .support-popover.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0) scale(1);
+    }
+
+    /* Triángulo del bocadillo */
+    .support-popover::after {
+      content: "";
+      position: absolute;
+      bottom: -8px;
+      left: 35px;
+      width: 0; height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid var(--border);
+    }
+
+    .support-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-main);
+      text-decoration: none;
+      padding: 12px 15px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: var(--transition);
+    }
+
+    .support-item i { width: 18px; height: 18px; color: var(--accent); }
+    .support-item:hover { background: rgba(255,255,255,0.05); color: var(--accent); }
   </style>
 </head>
 <body>
@@ -568,16 +592,34 @@
   </main>
 
   <footer class="footer-fixed">
-    <a href="tel:+5353910527" class="footer-link">
-      <i data-lucide="phone"></i>
+    <!-- Contenedor del Bocadillo de Soporte -->
+    <div id="support-menu" class="support-popover">
+      <a href="tel:+5353910527" class="support-item">
+        <i data-lucide="phone"></i>
+        <span>Llamar ahora</span>
+      </a>
+      <div style="height: 1px; background: var(--border); margin: 2px 0;"></div>
+      <a href="sms:+5353910527" class="support-item">
+    <i data-lucide="message-square"></i>
+    <span>Enviar SMS</span>
+  </a>
+    </div>
+
+    <!-- Botón de Soporte Actualizado -->
+    <button class="footer-link" onclick="toggleSupportMenu(event)">
+      <i data-lucide="life-buoy"></i>
       <span>Soporte</span>
-    </a>
+    </button>
+
     <div style="width: 1px; height: 20px; background: var(--border);"></div>
+    
     <button class="footer-link" onclick="toggleCoffeeModal(true)">
       <i data-lucide="coffee"></i>
       <span>Café</span>
     </button>
+    
     <div style="width: 1px; height: 20px; background: var(--border);"></div>
+    
     <a href="https://www.facebook.com/share/19h915VN2Q/?mibextid=wwXIfr" target="_blank" class="footer-link">
       <i data-lucide="facebook"></i>
       <span>Facebook</span>
@@ -1941,7 +1983,7 @@ window.sendOrder = () => {
   let hasError = false;
   if (name.length < 3) { nameInput.classList.add('invalid'); hasError = true; }
   if (addr.length < 5) { addrInput.classList.add('invalid'); hasError = true; }
-  if (!/^5\d{7}$/.test(phone)) { phoneInput.classList.add('invalid'); hasError = true; }
+  if (!/^[56]\d{7}$/.test(phone)) { phoneInput.classList.add('invalid'); hasError = true; }
 
   if (hasError) { showTopError("Revisa los datos marcados"); return; }
 
@@ -1999,6 +2041,25 @@ function clearOrderForm() {
     i.classList.remove('invalid');
   });
 }
+
+/*nuevaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa*/
+// Función para abrir/cerrar el menú de soporte
+window.toggleSupportMenu = (e) => {
+  e.stopPropagation(); // Evita que el clic cierre el menú inmediatamente
+  const menu = document.getElementById('support-menu');
+  menu.classList.toggle('active');
+  
+  // Refrescar iconos por si acaso
+  if(menu.classList.contains('active')) {
+    lucide.createIcons();
+  }
+};
+
+// Cerrar el menú si el usuario hace clic en cualquier otra parte de la pantalla
+document.addEventListener('click', () => {
+  const menu = document.getElementById('support-menu');
+  if (menu) menu.classList.remove('active');
+});
 
 // Iniciar app
 init();
