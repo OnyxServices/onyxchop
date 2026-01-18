@@ -1,27 +1,78 @@
 import * as api from './api.js';
 
-    let allProducts = [];
-    let allCategories = [];
-    let allPayments = [];
-    let currentCategoryId = null;
-    let editingId = null;
-    let confirmResolver = null;
+// --- VARIABLES DE ESTADO GLOBAL ---
+let allCategories = [];
+let allProducts = [];
+let allPayments = [];
+let currentCategoryId = null;
+let ordersInterval = null;
+let confirmResolver = null;
 
+// --- LOGICA DE LOGIN ---
+window.handleLogin = async () => {
+    const user = document.getElementById('login-user').value;
+    const pass = document.getElementById('login-pass').value;
+    const errorMsg = document.getElementById('login-error');
+    const btn = document.querySelector('#modal-login .btn-add');
+
+    if (!user || !pass) return;
+
+    try {
+        btn.innerText = "Verificando...";
+        btn.disabled = true;
+
+        // Intentar login con la base de datos
+        await api.loginAdmin(user, pass);
+
+        // Si es exitoso, guardamos sesión y mostramos el panel
+        localStorage.setItem('admin_token', 'active_session');
+        showDashboard();
+        showToast("¡Bienvenido!", "success");
+    } catch (e) {
+        errorMsg.style.display = 'block';
+        btn.innerText = "Entrar al Sistema";
+        btn.disabled = false;
+    }
+};
+
+window.handleLogout = () => {
+    localStorage.removeItem('admin_token');
+    location.reload(); // Recarga la página y vuelve al login
+};
+
+function showDashboard() {
+    document.getElementById('modal-login').classList.remove('active');
+    document.getElementById('admin-content').style.display = 'block';
+    
+    // Cargamos los datos de la tienda una vez autorizados
+    if (typeof refreshData === 'function') refreshData();
+}
+
+// Verificar si ya estaba logueado anteriormente
+document.addEventListener('DOMContentLoaded', () => {
+    if (localStorage.getItem('admin_token') === 'active_session') {
+        showDashboard();
+    }
+});
     // --- FUNCIONES DE MODALES ---
-    window.openModal = (modalId) => {
-  document.getElementById(modalId).classList.add('active');
+window.openModal = async (modalId) => {
+  const modal = document.getElementById(modalId);
+  if(!modal) return;
+
+  modal.classList.add('active');
   document.body.style.overflow = 'hidden';
   
-  if (modalId === 'modal-store') { refreshData(); showMainPanel(); }
-  if (modalId === 'modal-payments') { refreshData(); }
+  // Esperar a que los datos carguen antes de mostrar nada
+  if (modalId === 'modal-store' || modalId === 'modal-payments') { 
+      await refreshData(); 
+      if (modalId === 'modal-store') showMainPanel(); 
+  }
   
   if (modalId === 'modal-orders') { 
-    loadOrdersSummary(); // Carga inmediata al abrir
+    await loadOrdersSummary(); 
     
-    // Inicia el contador de 15 segundos (15000 ms)
-    if (ordersInterval) clearInterval(ordersInterval); // Limpiar si existía uno previo
+    if (ordersInterval) clearInterval(ordersInterval);
     ordersInterval = setInterval(() => {
-        console.log("Auto-recargando pedidos...");
         loadOrdersSummary();
     }, 15000); 
   }
@@ -66,20 +117,30 @@ import * as api from './api.js';
 
     // --- REFRESH DATA (Mantenido) ---
     async function refreshData() {
-      try {
-        const [categories, products, payments] = await Promise.all([
-            api.getCategories(), 
-            api.getAllProducts(),
-            api.getPaymentMethods()
-        ]);
-        allCategories = categories;
-        allProducts = products;
-        allPayments = payments;
-        renderCategories();
-        renderPaymentMethods();
-        if (currentCategoryId) renderProducts();
-      } catch (e) { showToast("Error de conexión", "error"); }
+  try {
+    // Mostramos un pequeño feedback visual si es necesario
+    const [categories, products, payments] = await Promise.all([
+        api.getCategories(), 
+        api.getAllProducts(),
+        api.getPaymentMethods()
+    ]);
+    
+    // Asignamos a las variables let que declaramos al principio
+    allCategories = categories || [];
+    allProducts = products || [];
+    allPayments = payments || [];
+    
+    renderCategories();
+    renderPaymentMethods();
+    
+    if (currentCategoryId) {
+        renderProducts();
     }
+  } catch (e) { 
+    console.error(e);
+    showToast("Error al sincronizar datos", "error"); 
+  }
+}
 
     function renderPaymentMethods() {
   const list = document.getElementById('payments-list');

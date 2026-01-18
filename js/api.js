@@ -234,8 +234,6 @@ export async function getAllProducts() {
   return data || []; // Importante: retornar los datos o un array vacío
 }
 
-
-// Al final de api.js
 export async function subtractProductStock(productId, quantityToSubtract) {
   // Primero obtenemos el stock actual
   const { data: product, error: fetchError } = await supabase
@@ -256,4 +254,19 @@ export async function subtractProductStock(productId, quantityToSubtract) {
     .eq('id', productId);
 
   if (updateError) throw updateError;
+}
+
+/* === SISTEMA DE LOGIN === */
+export async function loginAdmin(username, password) {
+  const { data, error } = await supabase
+    .from("admin_users")
+    .select("*")
+    .eq("username", username)
+    .eq("password", password) // Busca coincidencia exacta
+    .single();
+
+  if (error || !data) {
+    throw new Error("Credenciales inválidas");
+  }
+  return data;
 }
