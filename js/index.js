@@ -3,7 +3,8 @@ import {
   getAllProducts, 
   getPaymentMethods, 
   createOrderInSupabase, 
-  uploadReceiptToSupabase
+  uploadReceiptToSupabase,
+  subtractProductStock 
 } from './api.js';
 
 // --- ESTADO GLOBAL ---
@@ -439,11 +440,15 @@ window.addToCart = (id, event) => {
 
 async function processStockDeduction() {
   try {
+    // Verificamos que el carrito no esté vacío
+    if (!cart || cart.length === 0) return true;
+
+    // Ejecutamos el descuento para cada producto en el carrito
     const promises = cart.map(item => subtractProductStock(item.id, item.qty));
     await Promise.all(promises);
     return true;
   } catch (err) {
-    console.error("Error descontando stock:", err);
+    console.error("Error detallado descontando stock:", err);
     return false;
   }
 }

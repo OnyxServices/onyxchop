@@ -46,14 +46,6 @@ export async function deleteCategory(id, imageUrl) {
   if (error) throw error;
 }
 
-/* === PRODUCTOS === */
-
-export async function getAllProducts() {
-  const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: false });
-  if (error) throw error;
-  return data;
-}
-
 export async function createProduct(productData) {
   const { error } = await supabase.from("products").insert([{ ...productData, active: true }]);
   if (error) throw error;
@@ -228,15 +220,22 @@ export const deleteAllOrdersData = async () => {
 
 };
 
-// Si tienes algo así, asegúrate de incluir created_at
-export const getAllProducts = async () => {
+// Reemplaza el final de api.js con esto:
+export async function getAllProducts() {
   const { data, error } = await supabase
     .from('products')
     .select('id, name, price, image_url, category_id, active, created_at, stock')
-  // ...
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error("Error cargando productos:", error.message);
+    throw error;
+  }
+  return data || []; // Importante: retornar los datos o un array vacío
 }
 
 
+// Al final de api.js
 export async function subtractProductStock(productId, quantityToSubtract) {
   // Primero obtenemos el stock actual
   const { data: product, error: fetchError } = await supabase
@@ -247,9 +246,10 @@ export async function subtractProductStock(productId, quantityToSubtract) {
 
   if (fetchError) throw fetchError;
 
+  // Calculamos el nuevo stock (sin bajar de 0)
   const newStock = Math.max(0, product.stock - quantityToSubtract);
 
-  // Actualizamos con el nuevo valor
+  // Actualizamos en la base de datos
   const { error: updateError } = await supabase
     .from('products')
     .update({ stock: newStock })
