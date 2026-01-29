@@ -6,6 +6,7 @@ CREATE TABLE public.admin_users (
   username text NOT NULL UNIQUE,
   password text NOT NULL,
   created_at timestamp with time zone DEFAULT now(),
+  role text DEFAULT 'vendedor'::text,
   CONSTRAINT admin_users_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.categories (
@@ -48,7 +49,8 @@ CREATE TABLE public.products (
   image_url text,
   active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
-  stock numeric DEFAULT 0,
+  stock integer DEFAULT 0,
+  cost numeric DEFAULT 0,
   CONSTRAINT products_pkey PRIMARY KEY (id),
   CONSTRAINT products_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id)
 );

@@ -1,362 +1,356 @@
-import * as api from './api.js';
+/**
+ * admin.js - Gestión del Panel de Administración
+ * Correcciones: Importación de API, unificación de funciones de inversión y consistencia de datos.
+ */
 
-// --- VARIABLES DE ESTADO GLOBAL ---
-let allCategories = [];
-let allProducts = [];
-let allPayments = [];
-let currentCategoryId = null;
-let ordersInterval = null;
-let confirmResolver = null;
+import * as api from './api.js'; // Importamos todo el módulo como 'api'
 
-// --- LOGICA DE LOGIN ---
+/**
+ * ==========================================
+ *   VARIABLES DE ESTADO
+ * ==========================================
+ */
+let state = {
+    allCategories: [],
+    allProducts: [],
+    allPayments: [],
+    currentCategoryId: null,
+    ordersInterval: null,
+    confirmResolver: null
+};
+
+/**
+ * ==========================================
+ *   SISTEMA DE AUTENTICACIÓN
+ * ==========================================
+ */
+
 window.handleLogin = async () => {
     const user = document.getElementById('login-user').value;
     const pass = document.getElementById('login-pass').value;
-    const errorMsg = document.getElementById('login-error');
     const btn = document.querySelector('#modal-login .btn-add');
+    const errorMsg = document.getElementById('login-error');
 
-    if (!user || !pass) return;
+    if (!user || !pass) {
+        showToast("Por favor, completa todos los campos", "error");
+        return;
+    }
 
     try {
         btn.innerText = "Verificando...";
         btn.disabled = true;
         
-        // El loginAdmin de tu api.js ya devuelve el objeto completo del usuario
         const userData = await api.loginAdmin(user, pass);
         
         localStorage.setItem('admin_token', 'active_session');
-        localStorage.setItem('admin_role', userData.role); // Guardamos el rol (admin/vendedor)
+        localStorage.setItem('admin_role', userData.role); 
         localStorage.setItem('admin_username', userData.username);
         
         showDashboard();
         showToast(`¡Bienvenido ${userData.username}!`, "success");
     } catch (e) {
         errorMsg.style.display = 'block';
+        showToast("Credenciales inválidas", "error");
+    } finally {
         btn.innerText = "Entrar al Sistema";
         btn.disabled = false;
     }
 };
 
 window.handleLogout = () => {
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_role');
-    localStorage.removeItem('admin_username');
+    localStorage.clear();
     location.reload();
 };
 
+/**
+ * ==========================================
+ *   CONTROL DE UI Y MODALES
+ * ==========================================
+ */
+
 function showDashboard() {
-  const role = localStorage.getItem('admin_role');
-  const cardReports = document.getElementById('card-reports');
-  const cardInvestment = document.getElementById('card-investment'); // NUEVA
-  
-  document.getElementById('modal-login').classList.remove('active');
-  document.getElementById('admin-content').style.display = 'block';
-  
-  // RESTRICCIÓN DE ROLES
-  if (role === 'vendedor') {
-    // Ocultar tarjetas de admin
-    if (cardReports) cardReports.style.display = 'none';
-    if (cardInvestment) cardInvestment.style.display = 'none'; // NUEVA
-    console.log("Acceso limitado: Rol Vendedor");
-  } else {
-    // Mostrar todo si es admin
-    if (cardReports) cardReports.style.display = 'block';
-    if (cardInvestment) cardInvestment.style.display = 'block'; // NUEVA
-    console.log("Acceso total: Rol Admin");
-  }
-  
-  refreshData();
+    const role = localStorage.getItem('admin_role');
+    const isAdmin = (role === 'admin');
+
+    document.getElementById('modal-login').classList.remove('active');
+    document.getElementById('admin-content').style.display = 'block';
+    
+    // Control de permisos
+    const cardReports = document.getElementById('card-reports');
+    const cardInvestment = document.getElementById('card-investment');
+    
+    if (cardReports) cardReports.style.display = isAdmin ? 'block' : 'none';
+    if (cardInvestment) cardInvestment.style.display = isAdmin ? 'block' : 'none';
+    
+    refreshData();
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    if (localStorage.getItem('admin_token') === 'active_session') {
-        showDashboard();
-    }
-});
-
 window.openModal = async (modalId) => {
-  const role = localStorage.getItem('admin_role');
+    const role = localStorage.getItem('admin_role');
 
-  // Si intenta entrar a reportes y no es admin, bloqueamos
-  if (modalId === 'modal-orders' && role !== 'admin') {
-      showToast("Acceso denegado: Solo Administradores", "error");
-      return;
-  }
+    // Restricción de acceso
+    const restricted = ['modal-orders', 'modal-investment'];
+    if (restricted.includes(modalId) && role !== 'admin') {
+        showToast("Acceso denegado: Solo Administradores", "error");
+        return;
+    }
 
-  const modal = document.getElementById(modalId);
-  if(!modal) return;
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
 
-  modal.classList.add('active');
-  document.body.style.overflow = 'hidden';
-  
-  // ... resto del código original de openModal ...
-  if (modalId === 'modal-store' || modalId === 'modal-payments') { 
-      await refreshData(); 
-      if (modalId === 'modal-store') showMainPanel(); 
-  }
-  
-  if (modalId === 'modal-orders') { 
-    await loadOrdersSummary(); 
-    if (ordersInterval) clearInterval(ordersInterval);
-    ordersInterval = setInterval(() => loadOrdersSummary(), 15000); 
-
-// NUEVO: Cargar datos de inversión
-  if (modalId === 'modal-investment') { 
-    await loadInvestmentData(); 
-  }
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    
+    // Lógica de carga según el modal
+    switch (modalId) {
+        case 'modal-store':
+            await refreshData();
+            showMainPanel();
+            break;
+        case 'modal-payments':
+            await refreshData();
+            break;
+        case 'modal-orders':
+            await loadOrdersSummary();
+            if (state.ordersInterval) clearInterval(state.ordersInterval);
+            state.ordersInterval = setInterval(loadOrdersSummary, 15000);
+            break;
+        case 'modal-investment':
+            await renderInvestmentAnalysis();
+            break;
+    }
 };
 
 window.closeModal = (modalId) => {
-  document.getElementById(modalId).classList.remove('active');
-  document.body.style.overflow = 'auto';
-  if (modalId === 'modal-orders' && ordersInterval) {
-      clearInterval(ordersInterval);
-      ordersInterval = null;
-  }
-};
-
-// --- UTILIDADES ---
-window.showToast = (msg, type = 'info') => {
-  const container = document.getElementById('toast-container');
-  const toast = document.createElement('div');
-  toast.className = `toast`;
-  if(type === 'error') toast.style.borderLeftColor = 'var(--danger)';
-  toast.innerText = msg;
-  container.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
-};
-
-window.customConfirm = (title, text) => {
-  document.getElementById('modal-title').innerText = title;
-  document.getElementById('modal-text').innerText = text;
-  document.getElementById('modal-confirm').classList.add('active');
-  return new Promise(resolve => { confirmResolver = resolve; });
-};
-
-window.closeConfirm = (val) => {
-  document.getElementById('modal-confirm').classList.remove('active');
-  if(confirmResolver) confirmResolver(val);
-};
-
-// --- REFRESH DATA ---
-async function refreshData() {
-  try {
-    const [categories, products, payments] = await Promise.all([
-        api.getCategories(), 
-        api.getAllProducts(),
-        api.getPaymentMethods()
-    ]);
-    allCategories = categories || [];
-    allProducts = products || [];
-    allPayments = payments || [];
-    renderCategories();
-    renderPaymentMethods();
-    if (currentCategoryId) renderProducts();
-  } catch (e) { 
-    console.error(e);
-    showToast("Error al sincronizar datos", "error"); 
-  }
-}
-
-function renderPaymentMethods() {
-  const list = document.getElementById('payments-list');
-  list.innerHTML = allPayments.map(pay => `
-    <li class="list-item ${!pay.active ? 'is-inactive' : ''}">
-      <div class="item-info">
-        <div>
-          <p style="font-weight:700;">${pay.name}</p>
-          <small style="color:var(--text-muted)">
-            ${pay.mode === 'none' ? 'Precio directo' : pay.mode === 'percent' ? `Recargo: ${pay.value}%` : `Tasa: ${pay.value}`}
-          </small>
-        </div>
-      </div>
-      <div style="display:flex; gap:10px;">
-         <button class="btn ${pay.active ? 'btn-toggle-on' : 'btn-toggle-off'}" onclick="handleTogglePaymentStatus('${pay.id}', ${pay.active})">
-           ${pay.active ? 'Activo' : 'Inactivo'}
-         </button>
-         <button class="btn btn-edit" style="padding:5px 10px" onclick="openEditPayment('${pay.id}')">✏️</button>
-         <button class="btn btn-delete" style="padding:5px 10px" onclick="handleDeletePayment('${pay.id}')">🗑️</button>
-      </div>
-    </li>
-  `).join('');
-}
-
-function renderCategories() {
-  const list = document.getElementById('categories-list');
-  list.innerHTML = allCategories.map(cat => `
-    <li class="list-item">
-      <div class="item-info">
-        <img class="item-img" src="${cat.image_url || 'https://via.placeholder.com/50'}">
-        <p style="font-weight:700;">${cat.name}</p>
-      </div>
-      <div style="display:flex; gap:10px;">
-        <button class="btn" style="background:var(--primary); color:white; font-size:12px;" onclick="showCategoryProducts('${cat.id}', '${cat.name}')">Ver Productos</button>
-        <button class="btn btn-delete" onclick="handleDeleteCategory('${cat.id}')">🗑️</button>
-      </div>
-    </li>
-  `).join('');
-}
-
-function renderProducts() {
-  const list = document.getElementById('products-list');
-  const filtered = allProducts.filter(p => String(p.category_id) === String(currentCategoryId));
-  list.innerHTML = filtered.map(p => `
-    <li class="list-item ${!p.active ? 'is-inactive' : ''}">
-      <div class="item-info">
-        <img class="item-img" src="${p.image_url || 'https://via.placeholder.com/50'}" onerror="this.src='https://via.placeholder.com/50'">
-        <div>
-          <p style="font-weight:700;">${p.name}</p>
-          <p style="color:var(--success); font-weight:700;">$${p.price}</p>
-          <span style="margin-left:10px; color:${p.stock <= 0 ? 'var(--danger)' : 'var(--text-muted)'}; font-size:0.8rem;">📦 Stock: ${p.stock || 0}</span>
-        </div>
-      </div>
-      <div style="display:flex; gap:8px;">
-        <button class="btn ${p.active ? 'btn-toggle-on' : 'btn-toggle-off'}" onclick="handleToggleProductStatus('${p.id}', ${p.active})">
-          ${p.active ? 'Visible' : 'Oculto'}
-        </button>
-        <button class="btn btn-edit" onclick="openEditProduct('${p.id}')">✏️</button>
-        <button class="btn btn-delete" onclick="handleDeleteProduct('${p.id}')">🗑️</button>
-      </div>
-    </li>
-  `).join('');
-}
-
-// --- LÓGICA DE PRODUCTOS Y MÉTODOS ---
-window.handleToggleProductStatus = async (id, currentStatus) => {
-    try {
-        await api.updateProduct(id, { active: !currentStatus });
-        refreshData();
-    } catch (e) { showToast("Error", "error"); }
-};
-
-window.handleTogglePaymentStatus = async (id, currentStatus) => {
-    try {
-        await api.updatePaymentMethod(id, { active: !currentStatus });
-        refreshData();
-    } catch (e) { showToast("Error", "error"); }
-};
-
-window.openEditPayment = (id) => {
-    const pay = allPayments.find(p => String(p.id) === String(id));
-    if (!pay) return;
-    document.getElementById('edit-pay-id').value = pay.id;
-    document.getElementById('edit-pay-name').value = pay.name;
-    document.getElementById('edit-pay-mode').value = pay.mode;
-    document.getElementById('edit-pay-value').value = pay.value;
-    openModal('modal-edit-payment');
-};
-
-window.handleUpdatePayment = async () => {
-    const id = document.getElementById('edit-pay-id').value;
-    const name = document.getElementById('edit-pay-name').value;
-    const mode = document.getElementById('edit-pay-mode').value;
-    const value = document.getElementById('edit-pay-value').value;
-    try {
-        await api.updatePaymentMethod(id, { name, mode, value: parseFloat(value) });
-        closeModal('modal-edit-payment');
-        refreshData();
-    } catch (e) { showToast("Error", "error"); }
-};
-
-window.handleDeletePayment = async (id) => {
-    if (await customConfirm("¿Eliminar moneda?", "Afectará precios.")) {
-        try { await api.deletePaymentMethod(id); refreshData(); } catch (e) { showToast("Error", "error"); }
+    const modal = document.getElementById(modalId);
+    if (modal) modal.classList.remove('active');
+    document.body.style.overflow = 'auto';
+    
+    if (modalId === 'modal-orders' && state.ordersInterval) {
+        clearInterval(state.ordersInterval);
+        state.ordersInterval = null;
     }
 };
 
-window.openEditProduct = (id) => {
-    const prod = allProducts.find(p => String(p.id) === String(id));
-    if (!prod) return;
-    document.getElementById('edit-prod-id').value = prod.id;
-    document.getElementById('edit-prod-name').value = prod.name;
-    document.getElementById('edit-prod-price').value = prod.price;
-    document.getElementById('edit-prod-stock').value = prod.stock || 0;
-    openModal('modal-edit-product');
-};
+/**
+ * ==========================================
+ *   GESTIÓN DE DATOS (REFRESH)
+ * ==========================================
+ */
 
-window.handleUpdateProduct = async () => {
-    const id = document.getElementById('edit-prod-id').value;
-    const name = document.getElementById('edit-prod-name').value;
-    const price = document.getElementById('edit-prod-price').value;
-    const stock = document.getElementById('edit-prod-stock').value;
-    const file = document.getElementById('edit-prod-img').files[0];
+async function refreshData() {
     try {
-        let updateData = { name, price: parseFloat(price), stock: parseInt(stock) || 0 };
-        if (file) updateData.image_url = await api.uploadImage('products', file);
-        await api.updateProduct(id, updateData);
-        closeModal('modal-edit-product');
-        refreshData();
-    } catch (e) { showToast("Error", "error"); }
-};
+        const [categories, products, payments] = await Promise.all([
+            api.getCategories(), 
+            api.getAllProducts(),
+            api.getPaymentMethods()
+        ]);
 
-window.handleAddPayment = async () => {
-    const name = document.getElementById('pay-name').value;
-    const mode = document.getElementById('pay-mode').value;
-    const value = document.getElementById('pay-value').value;
-    if(!name) return;
-    await api.createPaymentMethod({ name, code: name.toLowerCase().replace(" ", ""), mode, value: parseFloat(value), active: true });
-    refreshData();
-};
+        state.allCategories = categories || [];
+        state.allProducts = products || [];
+        state.allPayments = payments || [];
 
-window.handleAddCategory = async () => {
-    const input = document.getElementById('new-cat-name');
-    const file = document.getElementById('new-cat-img').files[0];
-    if(!input.value) return;
-    let url = file ? await api.uploadImage('categories', file) : null;
-    await api.createCategory(input.value, url);
-    refreshData();
-    input.value = "";
-};
+        renderCategories();
+        renderPaymentMethods();
+        if (state.currentCategoryId) renderProducts();
+    } catch (e) { 
+        console.error("Error al sincronizar:", e);
+        showToast("Error al sincronizar datos", "error"); 
+    }
+}
+
+/**
+ * ==========================================
+ *   MÓDULO: CATEGORÍAS Y PRODUCTOS
+ * ==========================================
+ */
+
+function renderCategories() {
+    const list = document.getElementById('categories-list');
+    if (!list) return;
+
+    list.innerHTML = state.allCategories.map(cat => `
+        <li class="list-item">
+            <div class="item-info">
+                <img class="item-img" src="${cat.image_url || 'https://via.placeholder.com/50'}" alt="${cat.name}">
+                <p style="font-weight:700;">${cat.name}</p>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button class="btn btn-primary-glass" 
+                        onclick="showCategoryProducts('${cat.id}', '${cat.name}')">Ver Productos</button>
+                <button class="btn btn-delete" onclick="handleDeleteCategory('${cat.id}')">🗑️</button>
+            </div>
+        </li>
+    `).join('');
+}
+
+function renderProducts() {
+    const list = document.getElementById('products-list');
+    if (!list) return;
+
+    const filtered = state.allProducts.filter(p => String(p.category_id) === String(state.currentCategoryId));
+    
+    list.innerHTML = filtered.map(p => `
+        <li class="list-item ${!p.active ? 'is-inactive' : ''}">
+            <div class="item-info">
+                <img class="item-img" src="${p.image_url || 'https://via.placeholder.com/50'}" onerror="this.src='https://via.placeholder.com/50'">
+                <div>
+                    <p style="font-weight:700;">${p.name}</p>
+                    <p style="color:var(--success); font-weight:700;">$${parseFloat(p.price).toFixed(2)}</p>
+                    <span style="color:${p.stock <= 0 ? 'var(--danger)' : 'var(--text-muted)'}; font-size:0.8rem;">
+                        📦 Stock: ${p.stock || 0}
+                    </span>
+                </div>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn ${p.active ? 'btn-toggle-on' : 'btn-toggle-off'}" 
+                        onclick="handleToggleProductStatus('${p.id}', ${p.active})">
+                    ${p.active ? 'Visible' : 'Oculto'}
+                </button>
+                <button class="btn btn-edit" onclick="openEditProduct('${p.id}')">✏️</button>
+                <button class="btn btn-delete" onclick="handleDeleteProduct('${p.id}')">🗑️</button>
+            </div>
+        </li>
+    `).join('');
+}
 
 window.handleAddProduct = async () => {
     const nameInp = document.getElementById('new-prod-name');
     const priceInp = document.getElementById('new-prod-price');
     const stockInp = document.getElementById('new-prod-stock');
+    const costInp = document.getElementById('new-prod-cost');
     const file = document.getElementById('new-prod-img').files[0];
-    if(!nameInp.value) return;
+    
+    if (!nameInp.value || !priceInp.value) {
+        showToast("Nombre y precio son obligatorios", "error");
+        return;
+    }
+
     try {
         let url = file ? await api.uploadImage('products', file) : null;
-        await api.createProduct({ name: nameInp.value, price: parseFloat(priceInp.value), stock: parseInt(stockInp.value) || 0, image_url: url, category_id: currentCategoryId });
+        await api.createProduct({ 
+            name: nameInp.value, 
+            price: parseFloat(priceInp.value), 
+            stock: parseInt(stockInp.value) || 0, 
+            cost: parseFloat(costInp.value) || 0,
+            image_url: url, 
+            category_id: state.currentCategoryId 
+        });
+
         refreshData();
-        nameInp.value = ""; priceInp.value = ""; stockInp.value = "0";
-    } catch (e) { showToast("Error", "error"); }
+        showToast("Producto añadido", "success");
+        nameInp.value = ""; priceInp.value = ""; stockInp.value = "0"; costInp.value = "";
+    } catch (e) { showToast("Error al añadir producto", "error"); }
 };
 
-window.handleDeleteCategory = async (id) => {
-    if(await customConfirm("¿Eliminar?", "Borrará productos.")) {
-        await api.deleteCategory(id);
-        refreshData();
-    }
-};
+/**
+ * ==========================================
+ *   GESTIÓN DE PRODUCTOS (CORRECCIONES)
+ * ==========================================
+ */
 
-window.handleDeleteProduct = async (id) => {
-    if(await customConfirm("¿Borrar?", "")) {
-        await api.deleteProduct(id);
-        refreshData();
-    }
-};
-
-window.showCategoryProducts = (id, name) => {
-    currentCategoryId = id;
-    document.getElementById('section-categories').classList.add('hidden');
-    document.getElementById('section-products').classList.remove('hidden');
-    document.getElementById('current-cat-title').innerText = `📦 ${name}`;
-    renderProducts();
-};
-
-window.showMainPanel = () => {
-    document.getElementById('section-products').classList.add('hidden');
-    document.getElementById('section-categories').classList.remove('hidden');
-};
-
-// --- LÓGICA DE REPORTES (SOLUCIÓN PEDIDA) ---
-window.saveDeductionSetting = async (val) => {
+// Cambiar estado Visible/Oculto
+window.handleToggleProductStatus = async (id, currentStatus) => {
     try {
-        await api.updateDeductionPercent(val);
-        showToast("Comisión actualizada");
-        await loadOrdersSummary(); 
-    } catch (e) { showToast("Error", "error"); }
+        await api.updateProduct(id, { active: !currentStatus });
+        await refreshData();
+        showToast("Estado actualizado", "success");
+    } catch (e) { 
+        showToast("Error al cambiar estado", "error"); 
+    }
+};
+
+// Abrir modal de edición con datos cargados
+window.openEditProduct = (id) => {
+    const prod = state.allProducts.find(p => String(p.id) === String(id));
+    if (!prod) return;
+
+    document.getElementById('edit-prod-id').value = prod.id;
+    document.getElementById('edit-prod-name').value = prod.name;
+    document.getElementById('edit-prod-price').value = prod.price;
+    document.getElementById('edit-prod-stock').value = prod.stock || 0;
+    document.getElementById('edit-prod-cost').value = prod.cost || 0;
+
+    openModal('modal-edit-product');
+};
+
+// Guardar cambios del producto
+window.handleUpdateProduct = async () => {
+    const id = document.getElementById('edit-prod-id').value;
+    const name = document.getElementById('edit-prod-name').value;
+    const price = parseFloat(document.getElementById('edit-prod-price').value);
+    const stock = parseInt(document.getElementById('edit-prod-stock').value);
+    const cost = parseFloat(document.getElementById('edit-prod-cost').value);
+    const file = document.getElementById('edit-prod-img').files[0];
+
+    try {
+        let fields = { name, price, stock, cost };
+        
+        // Si hay una nueva imagen, subirla
+        if (file) {
+            fields.image_url = await api.uploadImage('products', file);
+        }
+
+        await api.updateProduct(id, fields);
+        closeModal('modal-edit-product');
+        await refreshData();
+        showToast("Producto actualizado", "success");
+    } catch (e) {
+        showToast("Error al actualizar", "error");
+    }
+};
+
+// Eliminar producto
+window.handleDeleteProduct = async (id) => {
+    const confirm = await customConfirm("¿Eliminar producto?", "Esta acción borrará el producto permanentemente.");
+    if (!confirm) return;
+
+    try {
+        const prod = state.allProducts.find(p => String(p.id) === String(id));
+        await api.deleteProduct(id, prod?.image_url);
+        await refreshData();
+        showToast("Producto eliminado", "success");
+    } catch (e) {
+        showToast("Error al eliminar", "error");
+    }
+};
+
+/**
+ * ==========================================
+ *   MÓDULO: PAGOS
+ * ==========================================
+ */
+
+function renderPaymentMethods() {
+    const list = document.getElementById('payments-list');
+    if (!list) return;
+
+    list.innerHTML = state.allPayments.map(pay => `
+        <li class="list-item ${!pay.active ? 'is-inactive' : ''}">
+            <div class="item-info">
+                <div>
+                    <p style="font-weight:700;">${pay.name}</p>
+                    <small style="color:var(--text-muted)">
+                        ${pay.mode === 'none' ? 'Precio directo' : pay.mode === 'percent' ? `Recargo: ${pay.value}%` : `Tasa: ${pay.value}`}
+                    </small>
+                </div>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button class="btn ${pay.active ? 'btn-toggle-on' : 'btn-toggle-off'}" 
+                        onclick="handleTogglePaymentStatus('${pay.id}', ${pay.active})">
+                    ${pay.active ? 'Activo' : 'Inactivo'}
+                </button>
+                <button class="btn btn-delete" onclick="handleDeletePayment('${pay.id}')">🗑️</button>
+            </div>
+        </li>
+    `).join('');
 }
+
+/**
+ * ==========================================
+ *   MÓDULO: REPORTES Y VENTAS
+ * ==========================================
+ */
 
 window.loadOrdersSummary = async () => {
     const container = document.getElementById('orders-detailed-list');
@@ -371,167 +365,260 @@ window.loadOrdersSummary = async () => {
         const percentage = parseFloat(deductionValue) || 0;
         if (deductionInput) deductionInput.value = percentage;
         
-        let totalRev = 0;     
-        let totalProfit = 0;  
-        let totalTra = 0;
-        let totalZelle = 0;
-        let totalUsd = 0;
+        let stats = { totalRev: 0, totalProfit: 0, totalTra: 0, totalZelle: 0, totalUsd: 0 };
         
         if (!orders || orders.length === 0) {
-            container.innerHTML = `<p style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted);">No hay pedidos.</p>`;
-            updateStatsUI(0, 0, 0, 0, 0); 
+            container.innerHTML = `<p style="text-align:center; padding:40px; color:var(--text-muted);">No hay pedidos.</p>`;
+            updateStatsUI(stats, 0); 
             return;
         }
 
         container.innerHTML = orders.map(order => {
-            const rawPrice = String(order.total_text || "0")
-                .replace(/\./g, '')     
-                .replace(',', '.')      
-                .replace(/[^0-9.]/g, ""); 
-            
-            const price = parseFloat(rawPrice) || 0;
+            const price = parseFloat(String(order.total_text || "0").replace(/[^0-9.]/g, "")) || 0;
             const method = (order.payment_method || "").toLowerCase();
             const myProfit = price * (percentage / 100);
 
-            totalRev += price; 
-            totalProfit += myProfit; 
+            stats.totalRev += price; 
+            stats.totalProfit += myProfit; 
 
-            if (method.includes("zelle") || method.includes("mlc")) {
-                totalZelle += price;
-            } else if (method.includes("tra") || method.includes("cup") || method.includes("móvil")) {
-                totalTra += price;
-            } else {
-                totalUsd += price;
-            }
+            if (method.includes("zelle") || method.includes("mlc")) stats.totalZelle += price;
+            else if (method.includes("tra") || method.includes("cup")) stats.totalTra += price;
+            else stats.totalUsd += price;
 
             return `
                 <div class="order-card">
                     <div class="order-header">
-                        <span style="font-size: 0.7rem; color: var(--text-muted);">#${String(order.id).slice(-5)}</span>
-                        <span class="order-total">$${price.toLocaleString(undefined, {minimumFractionDigits: 3, maximumFractionDigits: 3})}</span>
+                        <span style="font-size: 0.7rem;">ID: ${String(order.id).slice(-5)}</span>
+                        <span class="order-total">$${price.toFixed(2)}</span>
                     </div>
-                    <p style="font-size: 0.9rem; margin: 5px 0;">👤 ${order.customer_name}</p>
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                        <span style="font-size: 0.7rem; background: rgba(255,255,255,0.1); padding: 3px 8px; border-radius: 5px;">💳 ${order.payment_method}</span>
-                        <span style="font-size: 0.75rem; color: var(--accent); font-weight: bold;">
-                           Ganancia: $${myProfit.toLocaleString(undefined, {minimumFractionDigits: 3, maximumFractionDigits: 3})}
-                        </span>
+                    <p>👤 ${order.customer_name}</p>
+                    <div style="display:flex; justify-content:space-between; margin-top:10px;">
+                        <span class="badge">💳 ${order.payment_method}</span>
+                        <span style="color:var(--accent); font-weight:bold;">+$${myProfit.toFixed(2)}</span>
                     </div>
                 </div>
             `;
         }).join('');
 
-        // Actualización de la Interfaz con 3 decimales
-        document.getElementById('total-revenue').innerText = `$${totalRev.toLocaleString(undefined, {minimumFractionDigits: 3, maximumFractionDigits: 3})}`;
-        if(document.getElementById('total-net')) {
-            document.getElementById('total-net').innerText = `$${totalProfit.toLocaleString(undefined, {minimumFractionDigits: 3, maximumFractionDigits: 3})}`;
-        }
-        document.getElementById('total-tra').innerText = `$${totalTra.toLocaleString(undefined, {minimumFractionDigits: 3, maximumFractionDigits: 3})}`;
-        document.getElementById('total-zelle').innerText = `$${totalZelle.toLocaleString(undefined, {minimumFractionDigits: 3, maximumFractionDigits: 3})}`;
-        document.getElementById('total-usd').innerText = `$${totalUsd.toLocaleString(undefined, {minimumFractionDigits: 3, maximumFractionDigits: 3})}`;
-        document.getElementById('total-orders-count').innerText = orders.length;
+        updateStatsUI(stats, orders.length);
 
     } catch (e) {
-        console.error("Error en reporte:", e);
-        showToast("Error en reporte", "error");
+        showToast("Error al cargar reportes", "error");
     }
 };
 
-function updateStatsUI(rev, tra, zelle, usd, count) {
-    if(document.getElementById('total-revenue')) document.getElementById('total-revenue').innerText = `$${rev.toFixed(3)}`;
-    if(document.getElementById('total-tra')) document.getElementById('total-tra').innerText = `$${tra.toFixed(3)}`;
-    if(document.getElementById('total-zelle')) document.getElementById('total-zelle').innerText = `$${zelle.toFixed(3)}`;
-    if(document.getElementById('total-usd')) document.getElementById('total-usd').innerText = `$${usd.toFixed(3)}`;
-    if(document.getElementById('total-orders-count')) document.getElementById('total-orders-count').innerText = count;
+function updateStatsUI(stats, count) {
+    const mapping = {
+        'total-revenue': stats.totalRev,
+        'total-tra': stats.totalTra,
+        'total-zelle': stats.totalZelle,
+        'total-usd': stats.totalUsd,
+        'total-net': stats.totalProfit
+    };
+    
+    Object.keys(mapping).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = `$${mapping[id].toFixed(2)}`;
+    });
+
+    const countEl = document.getElementById('total-orders-count');
+    if (countEl) countEl.innerText = count;
 }
 
-window.handleClearAllOrders = async () => {
-    if (await customConfirm("¿VACIAR TODO?", "Borrará pedidos y comprobantes.")) {
-        try {
-            await api.deleteAllOrdersData();
-            showToast("Datos borrados", "success");
-            refreshData();
-        } catch (e) {
-            console.error(e);
-            showToast("Error al borrar datos", "error");
+/**
+ * ==========================================
+ *   MÓDULO: INVERSIÓN (ANÁLISIS REAL)
+ * ==========================================
+ */
+async function renderInvestmentAnalysis() {
+    try {
+        // 1. Obtener datos necesarios
+        const [products, orders, deductionValue] = await Promise.all([
+            api.getAllProducts(),
+            api.getOrders(),
+            api.getDeductionPercent()
+        ]);
+
+        const tableBody = document.getElementById('investment-products-list');
+        const percentage = parseFloat(deductionValue) || 0;
+        
+        // Variables para cálculos
+        let globalInvTotal = 0;           // Inversión total en stock actual
+        let globalGananciaPotencial = 0;  // Ganancia si se vende todo el stock
+        let totalRevenuePotencial = 0;    // Ventas totales potenciales (Precio * Stock)
+        let globalRealProfit = 0;         // Ganancia real de órdenes 'completed'
+
+        // --- CÁLCULO DE GANANCIA REAL (Órdenes Completadas) ---
+        const completedOrders = orders.filter(o => o.status === 'completed');
+        completedOrders.forEach(order => {
+            const price = parseFloat(String(order.total_text || "0").replace(/[^0-9.]/g, "")) || 0;
+            // La ganancia real se basa en la comisión configurada
+            globalRealProfit += (price * (percentage / 100));
+        });
+
+        // --- CÁLCULO DE STOCK Y POTENCIAL ---
+        tableBody.innerHTML = '';
+        products.forEach(p => {
+            const costo = parseFloat(p.cost || 0);
+            const precioVenta = parseFloat(p.price || 0);
+            const stock = parseInt(p.stock || 0);
+
+            const invTotalProducto = costo * stock;
+            const gananciaUnitaria = precioVenta - costo;
+            const gananciaTotalProducto = gananciaUnitaria * stock;
+            const ventaTotalProducto = precioVenta * stock;
+            
+            globalInvTotal += invTotalProducto;
+            globalGananciaPotencial += gananciaTotalProducto;
+            totalRevenuePotencial += ventaTotalProducto;
+
+            const margenProducto = costo > 0 ? (gananciaUnitaria / costo) * 100 : 0;
+
+            tableBody.innerHTML += `
+                <tr style="border-bottom: 1px solid var(--glass-border); font-size: 0.85rem;">
+                    <td style="padding:12px; font-weight:500;">${p.name}</td>
+                    <td style="padding:12px;">$${costo.toFixed(2)}</td>
+                    <td style="padding:12px;">$${precioVenta.toFixed(2)}</td>
+                    <td style="padding:12px; text-align:center;">${stock}</td>
+                    <td style="padding:12px; color:#ef4444;">$${invTotalProducto.toFixed(2)}</td>
+                    <td style="padding:12px; color:#10b981;">$${gananciaTotalProducto.toFixed(2)}</td>
+                    <td style="padding:12px; color:var(--accent);">${margenProducto.toFixed(2)}%</td>
+                </tr>
+            `;
+        });
+
+        // --- LÓGICA DE PUNTO DE EQUILIBRIO ---
+        // ¿Cuánto dinero falta para recuperar la inversión inicial?
+        const deficit = globalInvTotal - globalRealProfit;
+        const breakEvenStatusEl = document.getElementById('break-even-status');
+        const progressEl = document.getElementById('recovery-progress');
+        
+        // Calcular promedio de ganancia por venta para estimar "cuántas ventas faltan"
+        // Usamos el margen promedio del inventario
+        const avgMarginDecimal = totalRevenuePotencial > 0 ? (globalGananciaPotencial / totalRevenuePotencial) : 0;
+        const avgPrice = products.length > 0 ? (totalRevenuePotencial / products.reduce((a, b) => a + (b.stock || 0), 0)) : 0;
+        const avgProfitPerUnit = avgPrice * avgMarginDecimal;
+
+        if (deficit <= 0) {
+            breakEvenStatusEl.innerHTML = `<span style="color:#10b981;">✅ INVERSIÓN RECUPERADA</span>`;
+            progressEl.value = 100;
+        } else {
+            const ventasFaltantes = avgProfitPerUnit > 0 ? Math.ceil(deficit / avgProfitPerUnit) : '---';
+            const porcentajeRecuperado = (globalRealProfit / globalInvTotal) * 100;
+            
+            breakEvenStatusEl.innerHTML = `
+                <span style="color:#ef4444;">Faltan ~$${deficit.toFixed(2)}</span>
+                <div style="font-size:0.7rem; color:var(--text-muted); font-weight:400;">
+                    Aprox. ${ventasFaltantes} ventas más
+                </div>
+            `;
+            progressEl.value = porcentajeRecuperado;
         }
+
+        // --- ACTUALIZAR UI ---
+        const format = (val) => `$${val.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        
+        document.getElementById('total-investment').innerText = format(globalInvTotal);
+        document.getElementById('total-profit').innerText = format(globalGananciaPotencial);
+        document.getElementById('total-real-profit').innerText = format(globalRealProfit);
+
+    } catch (error) {
+        console.error("Error en análisis financiero:", error);
+        showToast('Error al calcular finanzas', 'error');
     }
+}
+
+/**
+ * ==========================================
+ *   UTILIDADES Y NAVEGACIÓN
+ * ==========================================
+ */
+
+window.showToast = (msg, type = 'info') => {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerText = msg;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
 };
 
-
-// --- FUNCIÓN PARA CARGAR DATOS DE INVERSIÓN ---
-window.loadInvestmentData = async () => {
-  try {
-    // 1. Obtener productos con precio_compra (si no existe, agregar campo en BD)
-    const products = allProducts || [];
-    
-    // Variables para cálculos totales
-    let totalInvestment = 0;
-    let totalSaleValue = 0;
-    let totalProfit = 0;
-    let productCountWithCost = 0;
-    
-    // Limpiar tabla
-    const tableBody = document.getElementById('investment-products-list');
-    tableBody.innerHTML = '';
-    
-    // Procesar cada producto
-    products.forEach(product => {
-      // Si no tiene precio_compra, usar 0 como costo
-      const costoCompra = parseFloat(product.precio_compra) || 0;
-      const precioVenta = parseFloat(product.price) || 0;
-      const stock = parseFloat(product.stock) || 0;
-      
-      // Cálculos individuales
-      const inversionProducto = costoCompra * stock;
-      const valorVentaProducto = precioVenta * stock;
-      const gananciaProducto = valorVentaProducto - inversionProducto;
-      const margenProducto = costoCompra > 0 ? 
-        ((precioVenta - costoCompra) / costoCompra * 100).toFixed(1) : 
-        'N/A';
-      
-      // Acumular totales (solo productos con costo > 0)
-      if (costoCompra > 0) {
-        totalInvestment += inversionProducto;
-        totalSaleValue += valorVentaProducto;
-        totalProfit += gananciaProducto;
-        productCountWithCost++;
-      }
-      
-      // Crear fila de tabla
-      const row = document.createElement('tr');
-      row.style.borderBottom = '1px solid var(--glass-border)';
-      row.innerHTML = `
-        <td style="padding: 12px;">${product.name}</td>
-        <td style="padding: 12px;">$${costoCompra.toFixed(3)}</td>
-        <td style="padding: 12px;">$${precioVenta.toFixed(3)}</td>
-        <td style="padding: 12px;">${stock}</td>
-        <td style="padding: 12px; color: ${inversionProducto > 0 ? '#ef4444' : 'var(--text-muted)'};">$${inversionProducto.toFixed(3)}</td>
-        <td style="padding: 12px; color: var(--primary);">$${valorVentaProducto.toFixed(3)}</td>
-        <td style="padding: 12px; color: ${gananciaProducto >= 0 ? '#10b981' : '#ef4444'};">$${gananciaProducto.toFixed(3)}</td>
-        <td style="padding: 12px; color: ${margenProducto > 0 ? '#10b981' : (margenProducto < 0 ? '#ef4444' : 'var(--text-muted)')};">
-          ${typeof margenProducto === 'string' ? margenProducto : margenProducto + '%'}
-        </td>
-      `;
-      tableBody.appendChild(row);
-    });
-    
-    // Calcular métricas generales
-    const avgMargin = productCountWithCost > 0 ? 
-      ((totalSaleValue - totalInvestment) / totalInvestment * 100).toFixed(1) : 0;
-    
-    const roi = totalInvestment > 0 ? 
-      (totalProfit / totalInvestment * 100).toFixed(1) : 0;
-    
-    // Actualizar UI
-    document.getElementById('total-investment').innerText = `$${totalInvestment.toFixed(3)}`;
-    document.getElementById('total-profit').innerText = `$${totalProfit.toFixed(3)}`;
-    document.getElementById('avg-margin').innerText = `${avgMargin}%`;
-    document.getElementById('roi-estimated').innerText = `${roi}%`;
-    
-  } catch (error) {
-    console.error('Error cargando datos de inversión:', error);
-    showToast('Error al calcular inversión', 'error');
-  }
+window.customConfirm = (title, text) => {
+    document.getElementById('modal-title').innerText = title;
+    document.getElementById('modal-text').innerText = text;
+    document.getElementById('modal-confirm').classList.add('active');
+    return new Promise(resolve => { state.confirmResolver = resolve; });
 };
-refreshData();
+
+window.closeConfirm = (val) => {
+    document.getElementById('modal-confirm').classList.remove('active');
+    if (state.confirmResolver) state.confirmResolver(val);
+};
+
+window.showCategoryProducts = (id, name) => {
+    state.currentCategoryId = id;
+    document.getElementById('section-categories').classList.add('hidden');
+    document.getElementById('section-products').classList.remove('hidden');
+    document.getElementById('current-cat-title').innerText = `📦 ${name}`;
+    renderProducts();
+};
+
+window.showMainPanel = () => {
+    state.currentCategoryId = null;
+    document.getElementById('section-products').classList.add('hidden');
+    document.getElementById('section-categories').classList.remove('hidden');
+};
+
+// Inicialización al cargar el DOM
+document.addEventListener('DOMContentLoaded', () => {
+    if (localStorage.getItem('admin_token') === 'active_session') {
+        showDashboard();
+    }
+});
+
+// Categorías
+window.handleAddCategory = async () => {
+    const name = document.getElementById('new-cat-name').value;
+    const file = document.getElementById('new-cat-img').files[0];
+    if (!name) return showToast("Nombre requerido", "error");
+
+    try {
+        const url = file ? await api.uploadImage('categories', file) : null;
+        await api.createCategory(name, url);
+        document.getElementById('new-cat-name').value = "";
+        refreshData();
+        showToast("Categoría creada", "success");
+    } catch (e) { showToast("Error al crear categoría", "error"); }
+};
+
+window.handleDeleteCategory = async (id) => {
+    const confirm = await customConfirm("¿Eliminar categoría?", "Se borrarán también los productos asociados.");
+    if (!confirm) return;
+    try {
+        const cat = state.allCategories.find(c => String(c.id) === String(id));
+        await api.deleteCategory(id, cat?.image_url);
+        refreshData();
+        showToast("Categoría eliminada", "success");
+    } catch (e) { showToast("Error al eliminar", "error"); }
+};
+
+// Configuración de Comisión (Reporte de Ventas)
+window.saveDeductionSetting = async (val) => {
+    try {
+        await api.updateDeductionPercent(parseFloat(val));
+        loadOrdersSummary(); // Recargar para aplicar el nuevo cálculo
+        showToast("Comisión actualizada", "success");
+    } catch (e) { showToast("Error al guardar configuración", "error"); }
+};
+
+// Limpiar historial
+window.handleClearAllOrders = async () => {
+    const ok = await customConfirm("¿Vaciar historial?", "Se borrarán todos los pedidos y fotos de comprobantes.");
+    if (!ok) return;
+    try {
+        await api.deleteAllOrdersData();
+        loadOrdersSummary();
+        showToast("Historial vaciado", "success");
+    } catch (e) { showToast("Error al vaciar", "error"); }
+};

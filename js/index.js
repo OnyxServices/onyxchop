@@ -332,7 +332,7 @@ function renderCategories() {
   if (!grid) return;
   grid.innerHTML = DB.categories.map(cat => `
     <div class="card" onclick="showProducts('${cat.id}', '${cat.name}')" style="cursor:pointer">
-      <div class="card-media"><img src="${cat.image_url || 'https://via.placeholder.com/300'}" onerror="this.src='https://via.placeholder.com/300'"></div>
+      <div class="card-media"><img src="${cat.image_url || 'https://picsum.photos/300'}" onerror="this.src='https://picsum.photos/300'"></div>
       <div class="card-body" style="text-align:center;">
         <div class="card-title" style="height:auto; font-size:0.9rem; font-weight:700;">${cat.name}</div>
       </div>
@@ -395,7 +395,7 @@ function productCardHTML(p) {
     <div class="card" style="${outOfStock ? 'opacity: 0.8;' : ''}">
       <div class="card-media">
         ${newBadge} 
-        <img src="${p.image_url || 'https://via.placeholder.com/300'}" loading="lazy" onerror="this.src='https://via.placeholder.com/300'" style="${outOfStock ? 'filter: grayscale(1);' : ''}">
+        <img src="${p.image_url || 'https://picsum.photos/300'}" loading="lazy" onerror="this.src='https://picsum.photos/300'" style="${outOfStock ? 'filter: grayscale(1);' : ''}">
         ${outOfStock ? '<div class="sold-out-overlay">AGOTADO</div>' : ''}
       </div>
       <div class="card-body">
@@ -522,12 +522,21 @@ function updateCartUI() {
   }
 
   list.innerHTML = cart.map((item, i) => {
-    totalBase += (parseFloat(item.price) * item.qty);
+    // BUSCAR PRECIO ACTUALIZADO: Buscamos el producto en DB.products para tener el precio real
+    const liveProduct = DB.products.find(p => String(p.id) === String(item.id));
+    
+    // Si por alguna razón el producto ya no existe en la DB, usamos el precio guardado como fallback
+    const currentPrice = liveProduct ? parseFloat(liveProduct.price) : parseFloat(item.price);
+    
+    totalBase += (currentPrice * item.qty);
     totalItems += item.qty;
-    const pObj = getFinalPrice(item.price);
+    
+    // Obtenemos el precio formateado según la moneda actual
+    const pObj = getFinalPrice(currentPrice);
+
     return `
       <div class="cart-item">
-        <img src="${item.image_url}" style="width:50px; height:50px; border-radius:6px; object-fit:cover" onerror="this.src='https://via.placeholder.com/300'">
+        <img src="${item.image_url}" style="width:50px; height:50px; border-radius:6px; object-fit:cover" onerror="this.src='https://picsum.photos/300'">
         <div class="cart-item-info" style="flex:1">
           <h4 style="margin:0; font-size:0.85rem">${item.name}</h4>
           <span style="color:var(--accent); font-weight:700">${pObj.text}</span>
@@ -798,25 +807,26 @@ window.confirmZellePayment = async () => {
   const loader = document.getElementById('upload-progress');
   const errorMsg = document.getElementById('file-error');
 
-  // Bloquear botón y mostrar cargando
   btn.disabled = true;
   loader.style.display = 'block';
   errorMsg.style.display = 'none';
 
   try {
-    // 1. Generar un ID de orden único
+    // 1. PRIMERO: Intentar descontar el stock (Solo en este momento)
+    const stockOk = await processStockDeduction();
+    if (!stockOk) {
+      throw new Error("No hay stock suficiente para completar el pedido.");
+    }
+
+    // 2. Generar ID y subir comprobante
     const orderId = `CS-Z-${Date.now().toString().slice(-6)}`;
-    
-    // 2. Subir el comprobante a Supabase
     const uploadedUrl = await uploadReceiptToSupabase(zelleReceiptFile, orderId);
     
-    // 3. Obtener datos del formulario
     const name = document.getElementById('order-name').value.trim();
     const phone = document.getElementById('order-phone').value.trim();
     const addr = document.getElementById('order-address').value.trim();
     const ref = document.getElementById('order-reference').value.trim();
 
-    // 4. Calcular totales y lista de productos
     let totalBase = 0;
     const itemsList = cart.map(item => {
       totalBase += (parseFloat(item.price) * item.qty);
@@ -826,7 +836,7 @@ window.confirmZellePayment = async () => {
     
     const finalTotal = getFinalPrice(totalBase);
 
-    // 5. Registrar el pedido en la base de datos
+    // 3. Registrar la orden con el stock ya descontado
     await createOrderInSupabase({
       order_id: orderId,
       customer_name: name,
@@ -840,7 +850,6 @@ window.confirmZellePayment = async () => {
       status: 'pending'
     });
 
-    // 6. Construir mensaje de WhatsApp
     const text = encodeURIComponent(
       `👑 *NUEVO PAGO POR ZELLE*\nPedido: #${orderId}\n\n` +
       `👤 *Cliente:* ${name}\n` +
@@ -852,12 +861,9 @@ window.confirmZellePayment = async () => {
       `💰 *TOTAL:* ${finalTotal.text}`
     );
 
-    // Redirigir a WhatsApp
-    setTimeout(() => {
-      window.location.href = `https://wa.me/+5353910527?text=${text}`;
-    }, 100);
+    window.location.href = `https://wa.me/+5353910527?text=${text}`;
 
-    // 7. Limpieza total y cierre
+    // 4. Limpieza (Solo ocurre si todo el proceso fue exitoso)
     cart = [];
     clearOrderForm();
     saveCartToStorage();
@@ -867,7 +873,7 @@ window.confirmZellePayment = async () => {
 
   } catch (e) {
     console.error('Error al procesar el pago Zelle:', e);
-    errorMsg.textContent = "Error al enviar el pago. Reintente.";
+    errorMsg.textContent = e.message || "Error al enviar el pago.";
     errorMsg.style.display = 'block';
     btn.disabled = false;
     loader.style.display = 'none';
@@ -919,14 +925,19 @@ window.confirmMlcPayment = async () => {
   loader.style.display = 'block';
 
   try {
+    // 1. Intentar descontar el stock justo ahora
+    const stockOk = await processStockDeduction();
+    if (!stockOk) {
+      throw new Error("Lo sentimos, se agotó el stock mientras procesaba.");
+    }
+
     const orderId = `CS-MLC-${Date.now().toString().slice(-6)}`;
     const uploadedUrl = await uploadReceiptToSupabase(mlcReceiptFile, orderId);
     
-    // Capturamos los datos del formulario incluyendo la Referencia
     const name = document.getElementById('order-name').value.trim();
     const phone = document.getElementById('order-phone').value.trim();
     const addr = document.getElementById('order-address').value.trim();
-    const ref = document.getElementById('order-reference').value.trim(); // <--- Referencia
+    const ref = document.getElementById('order-reference').value.trim();
 
     let totalBase = 0;
     const itemsList = cart.map(item => {
@@ -949,12 +960,11 @@ window.confirmMlcPayment = async () => {
       status: 'pending'
     });
 
-    // CONSTRUCCIÓN DEL MENSAJE CORREGIDA (Incluyendo Referencia)
     const text = encodeURIComponent(
       `👑 *NUEVO PEDIDO - MLC | Onyx Shop*\nPedido: #${orderId}\n\n` +
       `👤 *Cliente:* ${name}\n` +
       `📍 *Dirección:* ${addr}\n` +
-      (ref ? `🏠 *Referencia:* ${ref}\n` : '') + // <--- Se añade esta línea al mensaje
+      (ref ? `🏠 *Referencia:* ${ref}\n` : '') +
       `📞 *Tel:* +53${phone}\n` +
       `📸 *Comprobante:* ${uploadedUrl}\n\n` +
       `🛍️ *PRODUCTOS:*\n${itemsList}\n\n` +
@@ -963,16 +973,15 @@ window.confirmMlcPayment = async () => {
 
     setTimeout(() => { window.location.href = `https://wa.me/+5353910527?text=${text}`; }, 100);
 
-    // Limpieza total
     cart = [];
-    clearOrderForm(); // <--- Limpia el formulario (Nombre, Dir, Ref, Tel)
+    clearOrderForm();
     saveCartToStorage();
     updateCartUI();
     toggleMlcModal(false);
-    toggleCart(false); // <--- Cierra el carrito también
+    toggleCart(false);
   } catch (e) {
     console.error(e);
-    alert("Error al enviar el pago");
+    alert(e.message || "Error al enviar el pago");
     btn.disabled = false;
     loader.style.display = 'none';
   }
@@ -1029,29 +1038,36 @@ window.confirmTraPayment = async () => {
   errorMsg.style.display = 'none';
 
   try {
-    // 1. Generar ID único para la transferencia
+    // 1. PRIMERO: Intentar descontar stock
+    // Si falla, el proceso se detiene y no se gasta ancho de banda subiendo la imagen
+    const stockOk = await processStockDeduction();
+    if (!stockOk) {
+      throw new Error("No hay stock suficiente para algunos productos de tu carrito.");
+    }
+
+    // 2. Generar ID único
     const orderId = `CS-TR-${Date.now().toString().slice(-6)}`;
     
-    // 2. Subir imagen a Supabase
+    // 3. Subir imagen a Supabase
     const uploadedUrl = await uploadReceiptToSupabase(traReceiptFile, orderId);
     
-    // 3. Capturar datos del formulario
+    // 4. Capturar datos del formulario
     const name = document.getElementById('order-name').value.trim();
     const phone = document.getElementById('order-phone').value.trim();
     const addr = document.getElementById('order-address').value.trim();
     const ref = document.getElementById('order-reference').value.trim();
 
-    // 4. Calcular totales y lista de productos
+    // 5. Preparar resumen
     let totalBase = 0;
     const itemsList = cart.map(item => {
       totalBase += (parseFloat(item.price) * item.qty);
-      const pObj = getFinalPrice(item.price); // Obtiene el precio formateado según moneda
+      const pObj = getFinalPrice(item.price);
       return `• *${item.qty}x* ${item.name} _(${pObj.text})_`;
     }).join('\n');
     
     const finalTotal = getFinalPrice(totalBase);
 
-    // 5. Registrar pedido en la base de datos
+    // 6. Registrar pedido en base de datos
     await createOrderInSupabase({
       order_id: orderId,
       customer_name: name,
@@ -1065,9 +1081,9 @@ window.confirmTraPayment = async () => {
       status: 'pending'
     });
 
-    // 6. Estructura de WhatsApp idéntica a Zelle
+    // 7. Mensaje de WhatsApp
     const text = encodeURIComponent(
-      `👑 *NUEVO PEDIDO - Zelle | Onyx Shop*\nPedido: #${orderId}\n\n` +
+      `👑 *NUEVO PEDIDO - TRANSFERENCIA*\nPedido: #${orderId}\n\n` +
       `👤 *Cliente:* ${name}\n` +
       `📍 *Dirección:* ${addr}\n` +
       (ref ? `🏠 *Ref:* ${ref}\n` : '') +
@@ -1077,12 +1093,11 @@ window.confirmTraPayment = async () => {
       `💰 *TOTAL:* ${finalTotal.text}`
     );
 
-    // 7. Redirección a WhatsApp
     setTimeout(() => {
       window.location.href = `https://wa.me/+5353910527?text=${text}`;
     }, 100);
 
-    // Limpiar carrito y cerrar modales
+    // 8. Limpieza tras éxito
     cart = [];
     clearOrderForm();
     saveCartToStorage();
@@ -1092,7 +1107,8 @@ window.confirmTraPayment = async () => {
 
   } catch (e) {
     console.error('Error en transferencia:', e);
-    errorMsg.textContent = "Error al procesar el pago. Reintente.";
+    // IMPORTANTE: Mostrar el error específico (ej: falta de stock)
+    errorMsg.textContent = e.message || "Error al procesar el pago. Reintente.";
     errorMsg.style.display = 'block';
     btn.disabled = false;
     loader.style.display = 'none';
@@ -1112,21 +1128,20 @@ window.sendOrder = async () => {
   const ref = refInput.value.trim();
   const phone = phoneInput.value.trim();
 
-  // 1. Validaciones iniciales
+  // 1. Validaciones de formulario
   if (cart.length === 0) { showTopError("El carrito está vacío"); return; }
   
   let hasError = false;
   if (name.length < 3) { nameInput.classList.add('invalid'); hasError = true; }
   if (addr.length < 5) { addrInput.classList.add('invalid'); hasError = true; }
   if (!/^[56]\d{7}$/.test(phone)) { phoneInput.classList.add('invalid'); hasError = true; }
-  if (hasError) { showTopError("Revisa los datos marcados"); return; }
+  
+  if (hasError) { 
+    showTopError("Revisa los datos marcados"); 
+    return; 
+  }
 
-  // 2. Descontar Stock
-  showToast("Confirmando stock...");
-  const ok = await processStockDeduction();
-  if (!ok) { showTopError("Error al procesar inventario"); return; }
-
-  // 3. Lógica según el Método de Pago seleccionado
+  // 2. Redirección según método de pago (Sin descontar stock preventivamente)
   if (currentPaymentMethodCode === 'Z') {
     openZelleModal();
   } else if (currentPaymentMethodCode === 'Tra') {
@@ -1134,11 +1149,17 @@ window.sendOrder = async () => {
   } else if (currentPaymentMethodCode === 'mlc') {
     openMlcModal();
   } else {
-    // --- ESTE ES EL CASO PARA EFECTIVO / OTROS ---
+    // CASO EFECTIVO / OTROS (Sin comprobante)
+    // Aquí sí descontamos stock justo antes de terminar porque no hay pasos intermedios
+    showToast("Confirmando stock...");
+    const ok = await processStockDeduction();
+    if (!ok) { 
+      showTopError("Lo sentimos, no hay stock suficiente de algún producto."); 
+      return; 
+    }
+
     const orderId = `CS-EF-${Date.now().toString().slice(-6)}`;
     let totalBase = 0;
-    
-    // Preparar lista de productos para el mensaje
     const itemsList = cart.map(item => {
       totalBase += (parseFloat(item.price) * item.qty);
       const pObj = getFinalPrice(item.price);
@@ -1149,8 +1170,6 @@ window.sendOrder = async () => {
 
     try {
         showToast("Registrando pedido...");
-        
-        // REGISTRAR VENTA EN SUPABASE (Importante para que aparezca en el Admin)
         await createOrderInSupabase({
             order_id: orderId,
             customer_name: name,
@@ -1163,31 +1182,25 @@ window.sendOrder = async () => {
             status: 'completed' 
         });
 
-        // Construir mensaje de WhatsApp
         const text = encodeURIComponent(
-          `👑 *NUEVO PEDIDO | Onyx Shop*\n` +
-          `Pedido: #${orderId}\n\n` +
+          `👑 *NUEVO PEDIDO | Onyx Shop*\nPedido: #${orderId}\n\n` +
           `👤 *Cliente:* ${name}\n` +
           `📍 *Dirección:* ${addr}\n` +
           (ref ? `🏠 *Referencia:* ${ref}\n` : '') +
-          `📞 *Teléfono:* +53${phone}\n` +
-          `💳 *Método:* ${finalTotalObj.methodName}\n\n` +
+          `📞 *Teléfono:* +53${phone}\n\n` +
           `🛍️ *PRODUCTOS:*\n${itemsList}\n\n` +
-          `💰 *TOTAL A PAGAR:* ${finalTotalObj.text}\n\n` +
-          `✅ _Espere su confirmación, gracias..._`
+          `💰 *TOTAL A PAGAR:* ${finalTotalObj.text}`
         );
 
-        // Abrir WhatsApp
         window.open(`https://wa.me/+5353910527?text=${text}`, '_blank');
         
-        // Limpieza de interfaz
+        // Limpieza final
         cart = [];
         clearOrderForm();
         saveCartToStorage();
         updateCartUI();
         toggleCart(false);
         showToast("¡Pedido enviado!");
-
     } catch (e) {
         console.error(e);
         showTopError("Error al guardar en la base de datos");

@@ -1,117 +1,138 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8">
   <title>Admin Dashboard - Pro Store</title>
+  <link rel="icon" href="data:,">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- Google Fonts: Inter para un look moderno -->
+  <!-- Fuentes y Estilos -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" type="text/css" href="./css/admin.css">
 </head>
 
 <body>
-  
-  <!-- 1. MODAL DE LOGIN (Se muestra al cargar la página) -->
+
+  <!-- ================================================================
+       1. SISTEMA DE AUTENTICACIÓN (LOGIN)
+       ================================================================ -->
   <div id="modal-login" class="modal-overlay active" style="backdrop-filter: blur(25px); z-index: 9999;">
     <div class="modal-content" style="max-width: 400px; text-align: center; border: 1px solid var(--primary);">
       <div style="font-size: 40px; margin-bottom: 10px;">🔐</div>
       <h2>Acceso Administrativo</h2>
       <p style="color: var(--text-muted); margin-bottom: 25px;">Ingresa tus credenciales para continuar</p>
-      
+
       <div class="form-field" style="text-align: left; margin-bottom: 15px;">
-        <label>Usuario</label>
+        <label for="login-user">Usuario</label>
         <input id="login-user" type="text" placeholder="Usuario">
       </div>
+
       <div class="form-field" style="text-align: left; margin-bottom: 20px;">
-        <label>Contraseña</label>
+        <label for="login-pass">Contraseña</label>
         <input id="login-pass" type="password" placeholder="Contraseña">
       </div>
-      <button class="btn btn-add" style="width: 100%; height: 50px;" onclick="handleLogin()">Entrar al Sistema</button>
-      <p id="login-error" style="color: var(--danger); margin-top: 15px; font-size: 0.9rem; display: none;">⚠️ Usuario o contraseña incorrectos</p>
+
+      <button class="btn btn-add" style="width: 100%; height: 50px;" onclick="handleLogin()">
+        Entrar al Sistema
+      </button>
+
+      <p id="login-error" style="color: var(--danger); margin-top: 15px; font-size: 0.9rem; display: none;">
+        ⚠️ Usuario o contraseña incorrectos
+      </p>
     </div>
   </div>
 
-  <!-- 2. CONTENIDO DEL DASHBOARD (Se activa solo tras el login) -->
+  <!-- ================================================================
+       2. CONTENIDO PRINCIPAL (DASHBOARD)
+       ================================================================ -->
   <div id="admin-content" style="display: none;">
     <div class="container">
+      
+      <!-- Encabezado del Dashboard -->
       <header style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px;">
         <div>
           <h1>Admin Dashboard</h1>
           <p style="color: var(--text-muted); margin-top: 10px;">Gestión de tienda, monedas y productos</p>
         </div>
-        <button class="btn btn-delete" style="padding: 10px 20px;" onclick="handleLogout()">Cerrar Sesión 🚪</button>
+        <button class="btn btn-delete" style="padding: 10px 20px;" onclick="handleLogout()">
+          Cerrar Sesión 🚪
+        </button>
       </header>
 
-<div class="dashboard-grid">
-    <!-- Visible para todos -->
-    <div id="card-payments" class="stat-card" onclick="openModal('modal-payments')">
-      <span class="icon">💳</span>
-      <h3>Monedas y Tasas</h3>
-      <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 8px;">Configura métodos de pago</p>
-    </div>
+      <!-- Rejilla de Accesos Directos -->
+      <div class="dashboard-grid">
+        <!-- Monedas -->
+        <div id="card-payments" class="stat-card" onclick="openModal('modal-payments')">
+          <span class="icon">💳</span>
+          <h3>Monedas y Tasas</h3>
+          <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 8px;">Configura métodos de pago</p>
+        </div>
 
-    <!-- Visible para todos -->
-    <div id="card-store" class="stat-card" onclick="openModal('modal-store')">
-      <span class="icon">🏪</span>
-      <h3>Mi Tienda</h3>
-      <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 8px;">Categorías y Productos</p>
-    </div>
+        <!-- Inventario -->
+        <div id="card-store" class="stat-card" onclick="openModal('modal-store')">
+          <span class="icon">🏪</span>
+          <h3>Mi Tienda</h3>
+          <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 8px;">Categorías y Productos</p>
+        </div>
 
-    <!-- SOLO ADMIN -->
-    <div id="card-reports" class="stat-card" onclick="openModal('modal-orders')">
-      <span class="icon">📊</span>
-      <h3>Reporte de Ventas</h3>
-      <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 8px;">Análisis de pedidos</p>
-    </div>
+        <!-- Reportes (Solo Admin) -->
+        <div id="card-reports" class="stat-card" onclick="openModal('modal-orders')">
+          <span class="icon">📊</span>
+          <h3>Reporte de Ventas</h3>
+          <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 8px;">Análisis de pedidos</p>
+        </div>
 
-    <!-- SOLO ADMIN - NUEVA TARJETA DE INVERSIÓN -->
-    <div id="card-investment" class="stat-card" onclick="openModal('modal-investment')">
-      <span class="icon">💰</span>
-      <h3>Inversión & Ganancias</h3>
-      <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 8px;">Análisis de costos y rentabilidad</p>
+        <!-- Inversión (Solo Admin) -->
+        <div id="card-investment" class="stat-card" onclick="openModal('modal-investment')">
+          <span class="icon">💰</span>
+          <h3>Inversión & Ganancias</h3>
+          <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 8px;">Análisis de costos y rentabilidad</p>
+        </div>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- MODAL MÉTODOS DE PAGO -->
-<div id="modal-payments" class="modal-overlay">
-  <div class="modal-content">
-    <div style="display: flex; justify-content: space-between; margin-bottom: 30px; align-items: center;">
-      <h2>💳 Monedas y Tasas</h2>
-      <button class="btn btn-delete" style="padding: 5px 15px;" onclick="closeModal('modal-payments')">Cerrar</button>
+  <!-- ================================================================
+       3. MODALES DE GESTIÓN
+       ================================================================ -->
+
+  <!-- A. MODAL: MÉTODOS DE PAGO -->
+  <div id="modal-payments" class="modal-overlay">
+    <div class="modal-content">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 30px; align-items: center;">
+        <h2>💳 Monedas y Tasas</h2>
+        <button class="btn btn-delete" style="padding: 5px 15px;" onclick="closeModal('modal-payments')">Cerrar</button>
+      </div>
+
+      <!-- Formulario de creación -->
+      <div class="form-row payment-grid">
+        <div class="form-field">
+          <label>Moneda / Método</label>
+          <input id="pay-name" placeholder="Ej: Pago Móvil">
+        </div>
+        <div class="form-field">
+          <label>Cálculo</label>
+          <select id="pay-mode">
+            <option value="none">Precio Base ($)</option>
+            <option value="percent">Porcentaje (+%)</option>
+            <option value="divide">Tasa Cambio (/)</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Valor</label>
+          <input id="pay-value" type="number" step="0.01" value="1">
+        </div>
+        <div class="form-field" style="display: flex; align-items: flex-end;">
+          <button class="btn btn-add" style="width: 100%; height: 48px;" onclick="handleAddPayment()">➕ Añadir</button>
+        </div>
+      </div>
+
+      <h3 style="margin-bottom: 15px; font-size: 1rem; color: var(--text-muted);">Métodos Configurados</h3>
+      <ul id="payments-list" style="list-style: none;"></ul>
     </div>
-
-    <!-- Formulario para añadir -->
-    <div class="form-row payment-grid">
-      <div class="form-field">
-        <label>Moneda / Método</label>
-        <input id="pay-name" placeholder="Ej: Pago Móvil">
-      </div>
-      <div class="form-field">
-        <label>Cálculo</label>
-        <select id="pay-mode">
-          <option value="none">Precio Base ($)</option>
-          <option value="percent">Porcentaje (+%)</option>
-          <option value="divide">Tasa Cambio (/)</option>
-        </select>
-      </div>
-      <div class="form-field">
-        <label>Valor</label>
-        <input id="pay-value" type="number" step="0.01" value="1">
-      </div>
-      <div class="form-field" style="display: flex; align-items: flex-end;">
-        <button class="btn btn-add" style="width: 100%; height: 48px;" onclick="handleAddPayment()">➕ Añadir</button>
-      </div>
-    </div>
-
-    <!-- Lista de métodos existentes -->
-    <h3 style="margin-bottom: 15px; font-size: 1rem; color: var(--text-muted);">Métodos Configurados</h3>
-    <ul id="payments-list" style="list-style: none;"></ul>
   </div>
-</div>
-  
 
-  <!-- MODAL TIENDA -->
+  <!-- B. MODAL: INVENTARIO (TIENDA) -->
   <div id="modal-store" class="modal-overlay">
     <div class="modal-content">
       <div style="display: flex; justify-content: space-between; margin-bottom: 30px;">
@@ -119,14 +140,15 @@
         <button class="btn btn-delete" style="padding: 5px 15px;" onclick="closeModal('modal-store')">Cerrar</button>
       </div>
 
+      <!-- Sección Categorías -->
       <div id="section-categories">
         <div class="form-row">
           <div class="form-field">
             <label>Nueva Categoría</label>
-            <input id="new-cat-name" placeholder="Ej: Pizzas / Bebidas">
+            <input id="new-cat-name" placeholder="Ej: Pizzas">
           </div>
           <div class="form-field">
-            <label>Portada (Imagen)</label>
+            <label>Imagen Portada</label>
             <input type="file" id="new-cat-img" accept="image/*" style="font-size: 10px;">
           </div>
           <button class="btn btn-add" style="height: 48px; align-self: flex-end;" onclick="handleAddCategory()">➕ Crear</button>
@@ -134,310 +156,199 @@
         <ul id="categories-list"></ul>
       </div>
 
+      <!-- Sección Productos (Oculta por defecto) -->
       <div id="section-products" class="hidden">
-  <button class="btn" style="background: rgba(255,255,255,0.1); color: white; margin-bottom: 20px;" onclick="showMainPanel()">⬅ Volver</button>
-  <h3 id="current-cat-title" style="margin-bottom: 20px;"></h3>
+        <button class="btn" style="background: rgba(255,255,255,0.1); color: white; margin-bottom: 20px;" onclick="showMainPanel()">⬅ Volver</button>
+        <h3 id="current-cat-title" style="margin-bottom: 20px;"></h3>
+
+        <div class="form-row">
+          <div class="form-field"><label>Producto</label><input id="new-prod-name"></div>
+          <div class="form-field"><label>Costo $</label><input id="new-prod-cost" type="number" step="0.01"></div>
+          <div class="form-field"><label>Venta $</label><input id="new-prod-price" type="number" step="0.01"></div>
+          <div class="form-field"><label>Stock</label><input id="new-prod-stock" type="number" value="0"></div>
+          <div class="form-field"><label>Foto</label><input type="file" id="new-prod-img" accept="image/*" style="font-size: 10px;"></div>
+          <button class="btn btn-add" style="height: 48px; align-self: flex-end;" onclick="handleAddProduct()">➕ Añadir</button>
+        </div>
+        <ul id="products-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- C. MODAL: REPORTES DE VENTAS -->
+  <div id="modal-orders" class="modal-overlay">
+    <div class="modal-content" style="max-width: 1100px;">
+      
+      <!-- Cabecera de Reportes -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+        <h2>📊 Reporte de Ventas</h2>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <!-- Configuración de Comisión -->
+          <div style="display: flex; align-items: center; background: rgba(212, 175, 55, 0.15); padding: 8px 12px; border-radius: 12px; border: 1px solid var(--accent); gap: 8px;">
+            <label style="font-size: 0.65rem; color: var(--accent); font-weight: 800; text-transform: uppercase;">% Comisión</label>
+            <input id="setting-deduction" type="number" step="0.1" onchange="saveDeductionSetting(this.value)" style="width: 60px; background: #000; border: 1px solid var(--accent); color: #fff; text-align: center;">
+          </div>
+          <button class="btn-danger-glass" onclick="handleClearAllOrders()">🗑️ Vaciar</button>
+          <button class="btn" onclick="closeModal('modal-orders')">Cerrar</button>
+        </div>
+      </div>
+
+      <!-- Grid de Estadísticas de Venta -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px; margin-bottom: 30px;">
+        <div class="stat-card" style="border-left: 4px solid var(--primary);">
+          <small>Ventas Totales (Bruto)</small>
+          <div id="total-revenue" style="font-size: 1.5rem; font-weight: 800;">$0.00</div>
+        </div>
+        <div class="stat-card" style="border-left: 4px solid var(--accent); background: rgba(212, 175, 55, 0.05);">
+          <small style="color: var(--accent);">Mi Ganancia Total</small>
+          <div id="total-net" style="font-size: 1.5rem; font-weight: 900; color: var(--accent);">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <small>Transferencia / CUP</small>
+          <div id="total-tra" style="font-size: 1.2rem; color: #818cf8;">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <small>Zelle / MLC</small>
+          <div id="total-zelle" style="font-size: 1.2rem; color: #a78bfa;">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <small>Efectivo USD</small>
+          <div id="total-usd" style="font-size: 1.2rem; color: #fbbf24;">$0.00</div>
+        </div>
+        <div class="stat-card">
+          <small>Pedidos</small>
+          <div id="total-orders-count" style="font-size: 1.2rem;">0</div>
+        </div>
+      </div>
+
+      <!-- Historial -->
+      <h3>Historial Detallado</h3>
+      <div id="orders-detailed-list" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; max-height: 400px; overflow-y: auto;">
+        <!-- Inyectado por JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- D. MODAL: INVERSIÓN Y GANANCIAS -->
+  <div id="modal-investment" class="modal-overlay">
+    <div class="modal-content" style="max-width: 1100px;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 30px; align-items: center; border-bottom: 1px solid var(--glass-border); padding-bottom: 20px;">
+        <div>
+          <h2 style="margin:0;">💰 Análisis de Inversión</h2>
+          <p style="color: var(--text-muted); font-size: 0.8rem;">Basado en costo vs precio de venta</p>
+        </div>
+        <button class="btn" onclick="closeModal('modal-investment')">Cerrar</button>
+      </div>
+
+      <!-- Estadísticas de Inversión -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 30px;">
+        <!-- Estadísticas de Inversión Mejoradas -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px;">
+  <!-- Fila 1 -->
+  <div class="stat-card" style="border-left: 4px solid #ef4444;">
+    <small>Inversión en Stock</small>
+    <div id="total-investment" style="font-size: 1.5rem; color: #ef4444; font-weight: 900;">$0.00</div>
+  </div>
   
-  <div class="form-row">
-    <div class="form-field">
-      <label>Producto</label>
-      <input id="new-prod-name" placeholder="Nombre">
-    </div>
-    <div class="form-field">
-      <label>Precio $</label>
-      <input id="new-prod-price" type="number" step="0.01">
-    </div>
-    <!-- CAMPO DE STOCK AÑADIDO ABAJO -->
-    <div class="form-field">
-      <label>Stock (Cant.)</label>
-      <input id="new-prod-stock" type="number" value="0">
-    </div>
-    <div class="form-field">
-      <label>Foto</label>
-      <input type="file" id="new-prod-img" accept="image/*" style="font-size: 10px;">
-    </div>
-    <button class="btn btn-add" style="height: 48px; align-self: flex-end;" onclick="handleAddProduct()">➕ Añadir</button>
-  </div>
-  <ul id="products-list"></ul>
-</div>
-
-      </div>
+  <div class="stat-card" style="border-left: 4px solid #10b981;">
+    <small>Ganancia Potencial (Stock)</small>
+    <div id="total-profit" style="font-size: 1.5rem; color: #10b981; font-weight: 900;">$0.00</div>
   </div>
 
-<!-- MODAL REPORTES ACTUALIZADO (GANANCIAS Y COMISIONES) -->
-<div id="modal-orders" class="modal-overlay">
-  <div class="modal-content" style="max-width: 1100px;">
-    
-    <!-- ENCABEZADO DEL MODAL -->
-    <div style="display: flex; justify-content: space-between; margin-bottom: 30px; align-items: center; border-bottom: 1px solid var(--glass-border); padding-bottom: 20px;">
-      <div>
-        <h2 style="margin:0; color: var(--text-main);">📊 Reporte de Ventas y Ganancias</h2>
-        <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px;">Análisis de ingresos basados en comisión</p>
-      </div>
-      
-      <div class="modal-header-actions" style="display: flex; gap: 15px; align-items: center;">
-        
-        <!-- INPUT DE PORCENTAJE DE COMISIÓN -->
-       <!-- Este es el código exacto del selector de comisión -->
-<!-- Selector de comisión (mejor visibilidad) -->
-<div style="
-  display: flex;
-  align-items: center;
-  background: rgba(212, 175, 55, 0.15);
-  padding: 10px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--accent);
-  gap: 10px;
-">
+  <div class="stat-card" style="border-left: 4px solid var(--accent);">
+    <small>Ganancia Real (Ventas)</small>
+    <div id="total-real-profit" style="font-size: 1.5rem; color: var(--accent); font-weight: 900;">$0.00</div>
+  </div>
 
-  <label style="
-    font-size: 0.7rem;
-    color: var(--accent);
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  ">
-    % Comisión
-  </label>
-
-  <input
-    id="setting-deduction"
-    type="number"
-    step="0.1"
-    placeholder="3"
-    onchange="saveDeductionSetting(this.value)"
-    style="
-      width: 70px;
-      background: rgba(0, 0, 0, 0.6);
-      border: 1px solid var(--accent);
-      border-radius: 8px;
-      color: #fff;
-      font-weight: 700;
-      font-size: 1.1rem;
-      text-align: center;
-      padding: 4px 6px;
-      outline: none;
-    "
-  >
-
-<!-- MODAL INVERSIÓN Y GANANCIAS -->
-<div id="modal-investment" class="modal-overlay">
-  <div class="modal-content" style="max-width: 1100px;">
-    <div style="display: flex; justify-content: space-between; margin-bottom: 30px; align-items: center; border-bottom: 1px solid var(--glass-border); padding-bottom: 20px;">
-      <div>
-        <h2 style="margin:0; color: var(--text-main);">💰 Análisis de Inversión y Ganancias</h2>
-        <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px;">Cálculo basado en costo de compra y precio de venta</p>
-      </div>
-      <button class="btn" style="background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--glass-border);" onclick="closeModal('modal-investment')">
-        Cerrar
-      </button>
-    </div>
-
-    <!-- CUADROS DE ESTADÍSTICAS PRINCIPALES -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 30px;">
-      <!-- Inversión Total -->
-      <div class="stat-card" style="padding: 20px; border-left: 4px solid #ef4444; text-align: left;">
-        <small style="color: var(--text-muted); display: block; margin-bottom: 5px; text-transform: uppercase; font-size: 0.65rem; font-weight: 700;">Inversión Total</small>
-        <div id="total-investment" style="font-size: 1.8rem; font-weight: 900; color: #ef4444;">$0.00</div>
-        <small style="color: var(--text-muted); font-size: 0.7rem;">Costo de compra de todo el stock</small>
-      </div>
-      
-      <!-- Ganancia Total Estimada -->
-      <div class="stat-card" style="padding: 20px; border-left: 4px solid #10b981; text-align: left;">
-        <small style="color: var(--text-muted); display: block; margin-bottom: 5px; text-transform: uppercase; font-size: 0.65rem; font-weight: 700;">Ganancia Total Estimada</small>
-        <div id="total-profit" style="font-size: 1.8rem; font-weight: 900; color: #10b981;">$0.00</div>
-        <small style="color: var(--text-muted); font-size: 0.7rem;">Si se vende todo el stock</small>
-      </div>
-
-      <!-- Margen Promedio -->
-      <div class="stat-card" style="padding: 20px; border-left: 4px solid var(--accent); text-align: left;">
-        <small style="color: var(--text-muted); display: block; margin-bottom: 5px; text-transform: uppercase; font-size: 0.65rem; font-weight: 700;">Margen Promedio</small>
-        <div id="avg-margin" style="font-size: 1.8rem; font-weight: 900; color: var(--accent);">0%</div>
-        <small style="color: var(--text-muted); font-size: 0.7rem;">Porcentaje de ganancia</small>
-      </div>
-
-      <!-- ROI (Retorno sobre Inversión) -->
-      <div class="stat-card" style="padding: 20px; border-left: 4px solid #8b5cf6; text-align: left;">
-        <small style="color: var(--text-muted); display: block; margin-bottom: 5px; text-transform: uppercase; font-size: 0.65rem; font-weight: 700;">ROI Estimado</small>
-        <div id="roi-estimated" style="font-size: 1.8rem; font-weight: 900; color: #8b5cf6;">0%</div>
-        <small style="color: var(--text-muted); font-size: 0.7rem;">Retorno sobre inversión</small>
-      </div>
-    </div>
-
-    <!-- TABLA DETALLADA DE PRODUCTOS -->
-    <h3 style="margin-bottom: 15px; font-size: 1rem; color: var(--text-main); display: flex; align-items: center; gap: 10px;">
-      <span style="background: var(--accent); width: 8px; height: 8px; border-radius: 50%;"></span>
-      Detalle por Producto
-    </h3>
-    
-    <div style="overflow-x: auto;">
-      <table style="width: 100%; border-collapse: collapse; min-width: 800px;">
-        <thead>
-          <tr style="border-bottom: 1px solid var(--glass-border);">
-            <th style="text-align: left; padding: 12px; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Producto</th>
-            <th style="text-align: left; padding: 12px; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Costo Compra</th>
-            <th style="text-align: left; padding: 12px; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Precio Venta</th>
-            <th style="text-align: left; padding: 12px; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Stock</th>
-            <th style="text-align: left; padding: 12px; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Inversión</th>
-            <th style="text-align: left; padding: 12px; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Valor Venta</th>
-            <th style="text-align: left; padding: 12px; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Ganancia</th>
-            <th style="text-align: left; padding: 12px; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Margen</th>
-          </tr>
-        </thead>
-        <tbody id="investment-products-list">
-          <!-- Aquí se llenará con JavaScript -->
-        </tbody>
-      </table>
-    </div>
+  <!-- Fila 2 -->
+  <div class="stat-card" style="border-left: 4px solid #3b82f6; background: rgba(59, 130, 246, 0.05);">
+    <small style="color: #3b82f6;">Punto de Equilibrio</small>
+    <div id="break-even-status" style="font-size: 1.2rem; font-weight: 800; margin-top: 5px;">Calculando...</div>
+    <progress id="recovery-progress" value="0" max="100" style="width: 100%; height: 8px; margin-top: 10px;"></progress>
   </div>
 </div>
-</div>
+      </div>
 
-
-        <button class="btn-danger-glass" onclick="handleClearAllOrders()" style="padding: 10px 15px;">
-          <span>🗑️</span> Vaciar Todo
-        </button>
-        
-        <button class="btn" style="background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--glass-border);" onclick="closeModal('modal-orders')">
-          Cerrar
-        </button>
+      <!-- Tabla de Detalles de Stock -->
+      <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; min-width: 800px;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--glass-border); text-align: left; color: var(--text-muted); font-size: 0.75rem;">
+              <th style="padding: 12px;">PRODUCTO</th>
+              <th style="padding: 12px;">COSTO</th>
+              <th style="padding: 12px;">VENTA</th>
+              <th style="padding: 12px;">STOCK</th>
+              <th style="padding: 12px;">INV. TOTAL</th>
+              <th style="padding: 12px;">GANANCIA</th>
+              <th style="padding: 12px;">MARGEN</th>
+            </tr>
+          </thead>
+          <tbody id="investment-products-list"></tbody>
+        </table>
       </div>
     </div>
-    
-    <!-- CUADROS DE ESTADÍSTICAS (STATS) -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 30px;">
-      
-      <!-- Ventas Totales (Bruto) -->
-      <div class="stat-card" style="padding: 20px; border-left: 4px solid var(--primary); text-align: left;">
-        <small style="color: var(--text-muted); display: block; margin-bottom: 5px; text-transform: uppercase; font-size: 0.65rem; font-weight: 700;">Ventas Totales (Bruto)</small>
-        <div id="total-revenue" style="font-size: 1.6rem; font-weight: 800; color: #fff;">$0.00</div>
-      </div>
-      
-      <!-- MI GANANCIA (Calculado con el %) -->
-      <div class="stat-card" style="padding: 20px; border-left: 4px solid var(--accent); background: rgba(212, 175, 55, 0.05); text-align: left;">
-        <small style="color: var(--accent); display: block; margin-bottom: 5px; text-transform: uppercase; font-size: 0.65rem; font-weight: 800;">Mi Ganancia Total</small>
-        <div id="total-net" style="font-size: 1.8rem; font-weight: 900; color: var(--accent);">$0.00</div>
-      </div>
-      
-      <!-- Transferencia / Pago Móvil -->
-      <div class="stat-card" style="padding: 20px; text-align: left;">
-        <small style="color: var(--text-muted); display: block; margin-bottom: 5px; text-transform: uppercase; font-size: 0.65rem;">Transferencia / CUP</small>
-        <div id="total-tra" style="font-size: 1.3rem; font-weight: 700; color: #818cf8;">$0.00</div>
-      </div>
-
-      <!-- Zelle / MLC -->
-      <div class="stat-card" style="padding: 20px; text-align: left;">
-        <small style="color: var(--text-muted); display: block; margin-bottom: 5px; text-transform: uppercase; font-size: 0.65rem;">Zelle / MLC</small>
-        <div id="total-zelle" style="font-size: 1.3rem; font-weight: 700; color: #a78bfa;">$0.00</div>
-      </div>
-
-      <!-- Efectivo / Otros -->
-      <div class="stat-card" style="padding: 20px; text-align: left;">
-        <small style="color: var(--text-muted); display: block; margin-bottom: 5px; text-transform: uppercase; font-size: 0.65rem;">Efectivo USD</small>
-        <div id="total-usd" style="font-size: 1.3rem; font-weight: 700; color: #fbbf24;">$0.00</div>
-      </div>
-
-      <!-- Cantidad de Pedidos -->
-      <div class="stat-card" style="padding: 20px; text-align: left;">
-        <small style="color: var(--text-muted); display: block; margin-bottom: 5px; text-transform: uppercase; font-size: 0.65rem;">Cantidad Pedidos</small>
-        <div id="total-orders-count" style="font-size: 1.3rem; font-weight: 700;">0</div>
-      </div>
-    </div>
-
-    <!-- LISTADO DETALLADO DE CADA VENTA -->
-    <h3 style="margin-bottom: 15px; font-size: 1rem; color: var(--text-main); display: flex; align-items: center; gap: 10px;">
-      <span style="background: var(--accent); width: 8px; height: 8px; border-radius: 50%;"></span>
-      Historial Detallado de Pedidos
-    </h3>
-    
-    <div id="orders-detailed-list" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; max-height: 400px; overflow-y: auto; padding-right: 10px;">
-        <!-- Aquí el JS inyectará las tarjetas de cada pedido -->
-        <p style="text-align: center; color: var(--text-muted); padding: 20px;">Cargando historial...</p>
-    </div>
-    
   </div>
-</div>
 
-</div>
+  <!-- ================================================================
+       4. MODALES DE EDICIÓN Y UTILIDADES
+       ================================================================ -->
 
-  <div id="toast-container"></div>
-
-  <!-- MODAL CONFIRMACIÓN -->
+  <!-- Modal Confirmación Genérica -->
   <div id="modal-confirm" class="modal-overlay">
     <div class="modal-content" style="max-width: 400px; text-align: center;">
       <h3 id="modal-title">¿Confirmar acción?</h3>
       <p id="modal-text" style="color: var(--text-muted); margin: 15px 0 25px;">Esta acción no se puede revertir.</p>
       <div style="display: flex; gap: 10px; justify-content: center;">
-        <button class="btn" style="background: rgba(255,255,255,0.1); color: white;" onclick="closeConfirm(false)">Cancelar</button>
+        <button class="btn" style="background: rgba(255,255,255,0.1);" onclick="closeConfirm(false)">Cancelar</button>
         <button class="btn btn-delete" onclick="closeConfirm(true)">Si, eliminar</button>
       </div>
     </div>
   </div>
 
-<!-- MODAL EDITAR PRODUCTO -->
-<div id="modal-edit-product" class="modal-overlay">
-  <div class="modal-content" style="max-width: 500px;">
-    <div style="display: flex; justify-content: space-between; margin-bottom: 25px;">
-      <h2>✏️ Editar Producto</h2>
-      <button class="btn btn-delete" style="padding: 5px 15px;" onclick="closeModal('modal-edit-product')">Cerrar</button>
+  <!-- Modal Editar Producto -->
+  <div id="modal-edit-product" class="modal-overlay">
+    <div class="modal-content" style="max-width: 500px;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 25px;">
+        <h2>✏️ Editar Producto</h2>
+        <button class="btn btn-delete" onclick="closeModal('modal-edit-product')">Cerrar</button>
+      </div>
+      <div class="form-field"><label>Nombre</label><input id="edit-prod-name"></div>
+      <div class="form-field"><label>Costo $</label><input id="edit-prod-cost" type="number" step="0.01"></div>
+      <div class="form-field"><label>Venta $</label><input id="edit-prod-price" type="number" step="0.01"></div>
+      <div class="form-field"><label>Stock</label><input id="edit-prod-stock" type="number"></div>
+      <div class="form-field" style="margin-bottom: 20px;"><label>Nueva Imagen</label><input type="file" id="edit-prod-img" accept="image/*"></div>
+      
+      <input type="hidden" id="edit-prod-id">
+      <button class="btn btn-add" style="width: 100%;" onclick="handleUpdateProduct()">💾 Guardar Cambios</button>
     </div>
-    
-    <div class="form-field" style="margin-bottom: 15px;">
-      <label>Nombre del Producto</label>
-      <input id="edit-prod-name">
-    </div>
-    <div class="form-field" style="margin-bottom: 15px;">
-      <label>Precio $</label>
-      <input id="edit-prod-price" type="number" step="0.01">
-    </div>
-
-    <div class="form-field" style="margin-bottom: 15px;">
-      <label>Stock disponible</label>
-      <input id="edit-prod-stock" type="number">
-    </div>
-
-    <div class="form-field" style="margin-bottom: 25px;">
-      <label>Nueva Imagen (Opcional)</label>
-      <input type="file" id="edit-prod-img" accept="image/*" style="font-size: 10px;">
-    </div>
-    
-    <input type="hidden" id="edit-prod-id">
-    
-    <button class="btn btn-add" style="width: 100%;" onclick="handleUpdateProduct()">💾 Guardar Cambios</button>
   </div>
-</div>
 
-<!-- MODAL EDITAR MÉTODO DE PAGO -->
-<div id="modal-edit-payment" class="modal-overlay">
-  <div class="modal-content" style="max-width: 500px;">
-    <div style="display: flex; justify-content: space-between; margin-bottom: 25px;">
-      <h2>✏️ Editar Moneda / Tasa</h2>
-      <button class="btn btn-delete" style="padding: 5px 15px;" onclick="closeModal('modal-edit-payment')">Cerrar</button>
+  <!-- Modal Editar Pago -->
+  <div id="modal-edit-payment" class="modal-overlay">
+    <div class="modal-content" style="max-width: 500px;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 25px;">
+        <h2>✏️ Editar Moneda</h2>
+        <button class="btn btn-delete" onclick="closeModal('modal-edit-payment')">Cerrar</button>
+      </div>
+      <div class="form-field"><label>Nombre</label><input id="edit-pay-name"></div>
+      <div class="form-field">
+        <label>Cálculo</label>
+        <select id="edit-pay-mode">
+          <option value="none">Precio Base</option>
+          <option value="percent">Porcentaje (+ %)</option>
+          <option value="divide">Tasa Cambio (/)</option>
+        </select>
+      </div>
+      <div class="form-field" style="margin-bottom: 20px;"><label>Valor</label><input id="edit-pay-value" type="number" step="0.01"></div>
+      
+      <input type="hidden" id="edit-pay-id">
+      <button class="btn btn-add" style="width: 100%;" onclick="handleUpdatePayment()">💾 Guardar Cambios</button>
     </div>
-    
-    <div class="form-field" style="margin-bottom: 15px;">
-      <label>Nombre del Método</label>
-      <input id="edit-pay-name">
-    </div>
-    <div class="form-field" style="margin-bottom: 15px;">
-      <label>Cálculo</label>
-      <select id="edit-pay-mode">
-        <option value="none">Precio Base</option>
-        <option value="percent">Porcentaje (+ %)</option>
-        <option value="divide">Tasa Cambio (/)</option>
-      </select>
-    </div>
-    <div class="form-field" style="margin-bottom: 25px;">
-      <label>Valor</label>
-      <input id="edit-pay-value" type="number" step="0.01">
-    </div>
-    
-    <input type="hidden" id="edit-pay-id">
-    
-    <button class="btn btn-add" style="width: 100%;" onclick="handleUpdatePayment()">💾 Guardar Cambios</button>
   </div>
-</div>
 
+  <!-- Contenedor de Notificaciones Toast -->
+  <div id="toast-container"></div>
+
+  <!-- Scripts -->
   <script type="module" src="./js/admin.js"></script>
 </body>
 

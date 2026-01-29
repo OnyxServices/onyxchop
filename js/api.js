@@ -225,7 +225,7 @@ export const deleteAllOrdersData = async () => {
 export async function getAllProducts() {
   const { data, error } = await supabase
     .from('products')
-    .select('id, name, price, image_url, category_id, active, created_at, stock')
+    .select('id, name, price, image_url, category_id, active, created_at, stock, cost')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -262,8 +262,8 @@ export async function loginAdmin(username, password) {
   const { data, error } = await supabase
     .from("admin_users")
     .select("*")
-    .eq("username", username)
-    .eq("password", password) // Busca coincidencia exacta
+    .ilike("username", username) // .ilike no distingue entre oto, Oto u OTO
+    .eq("password", password)
     .single();
 
   if (error || !data) {
@@ -271,7 +271,6 @@ export async function loginAdmin(username, password) {
   }
   return data;
 }
-
 /* === CONFIGURACIONES (SETTINGS) === */
 export async function getDeductionPercent() {
   const { data, error } = await supabase
