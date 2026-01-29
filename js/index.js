@@ -48,7 +48,7 @@ function trackCategoryView(categoryName, products) {
 
 
 // --- Sonidos ---
-const soundAddCart = new Audio('https://onyxservices.github.io/onyxchop/sound/agregado.mp3');
+const soundAddCart = new Audio('https://onyxservices.github.io/onyxshop/sound/agregado.mp3');
 const soundNewProduct = new Audio('https://onyxservices.github.io/onyxchop/sound/new.mp3');
 
 function isProductNew(dateString) {
@@ -1236,4 +1236,5 @@ window.openSmsApp = (phone) => {
 };
 
 // Iniciar app
+
 init();
