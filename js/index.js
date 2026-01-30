@@ -1,3 +1,8 @@
+/**
+ * index.js - Lógica Principal de Onyx Shop
+ * Organizado por módulos: Estado, Datos, UI, Carrito, Pagos y Utilidades.
+ */
+
 import { 
   getCategories, 
   getAllProducts, 
@@ -7,131 +12,66 @@ import {
   subtractProductStock 
 } from './api.js';
 
-// --- ESTADO GLOBAL ---
-let DB = { categories: [], products: [], paymentMethods: [] };
-let knownProductIds = new Set(); 
-let cart = [];
-let currentPaymentMethodCode = "$"; 
-let currentView = { type: 'categories', catId: null, catName: null };
-let filteredProducts = [];
-let itemsPerPage = 8;
-let currentPage = 1;
-let observer = null;
-let zelleReceiptFile = null;
-let zelleReceiptUrl = null;
-let traReceiptFile = null;
-let mlcReceiptFile = null;
-let currentZelleOrderData = null;
+// ==========================================
+// 1. ESTADO GLOBAL Y CONFIGURACIÓN
+// ==========================================
 
-//          --- Funciones de Google Analitic---
+let DB = { 
+  categories: [], 
+  products: [], 
+  paymentMethods: [] 
+};
 
-function trackCategoryView(categoryName, products) {
-  if (typeof gtag !== "function") return;
-  if (!categoryName || !products || products.length === 0) return;
-
- gtag('event', 'view_item_list', {
-  item_list_name: categoryName,
-  items: products ? products.slice(0, 20).map(p => ({ // Añade validación aquí
-    item_id: String(p.id),
-    item_name: p.name,
-    item_category: categoryName,
-    // Sugerencia extra: Añade el precio si lo tienes
-    price: p.price, 
-    currency: currentPaymentMethodCode === '$' ? 'USD' : 'CUP' // O la moneda por defecto
-  })) : []
-});
-
-  console.log('[GA4] Vista de categoría:', categoryName);
-}
-
-
-
-
-// --- Sonidos ---
-const soundAddCart = new Audio('https://onyxservices.github.io/onyxshop/sound/new.mp3');
-const soundNewProduct = new Audio('https://onyxservices.github.io/onyxshop/sound/new.mp3');
-
-function isProductNew(dateString) {
-  if (!dateString) return false;
-
-  const dateCreated = new Date(dateString);
-  const now = new Date();
-  
-  // Calculamos la diferencia en milisegundos
-  const diffInMs = now - dateCreated;
-  
-  // Convertimos milisegundos a horas
-  // (1000ms * 60s * 60min = 1 hora)
-  const diffInHours = diffInMs / (1000 * 60 * 60);
-
-  // Retorna true solo si tiene 12 horas o menos de creado
-  return diffInHours <= 12;
-}
-
-function setupPaymentListener() {
-  const sel = document.getElementById('payment-selector');
-  if (!sel) return;
-
-  sel.addEventListener('change', (e) => {
-    // 1. Actualizamos el código de moneda global (ej: "CUP", "MLC", "USD")
-    currentPaymentMethodCode = e.target.value;    
-    // 2. Refrescamos los productos que están en pantalla para que cambien de precio
-    if (currentView.type === 'products') {
-      softRefreshProducts();
-    }    
-    // 3. Refrescamos el carrito para que el total se recalcule
-    updateCartUI();    
-    console.log("Moneda cambiada a:", currentPaymentMethodCode);
-  });
-}
-
-//-----------------------------INICIALIZACIÓN-------------------------------------------------------
-async function init() {
-  lucide.createIcons();
-  loadCartFromStorage();
-  setTimeout(showCurrencyHint, 2500);
-
-  const splash = document.getElementById('splash-screen');  
-  // Si en 6 segundos no ha cargado la base de datos, quita el splash de todos modos
-  const forceHide = setTimeout(() => {
-    console.warn("La base de datos tarda demasiado. Iniciando app con datos locales...");
-    ocultarSplash(splash);
-  }, 6000);
-
-  try {
-    // Intentamos cargar los datos
-    await refreshData(true);
-  } catch (error) {
-    // Si la tabla no existe o hay error de red, lo capturamos aquí
-    console.error("Error crítico cargando datos de Supabase:", error);
-  } finally {
-    // Pase lo que pase (éxito o error), quitamos el temporizador y ocultamos splash
-    clearTimeout(forceHide);
-    
-    const hasSeenSplash = sessionStorage.getItem('cuban_store_splash_seen');
-    if (!hasSeenSplash) {
-      setTimeout(() => {
-        ocultarSplash(splash);
-        sessionStorage.setItem('cuban_store_splash_seen', 'true');
-      }, 4000);
-    } else {
-      ocultarSplash(splash);
-    }
+let AppState = {
+  cart: [],
+  knownProductIds: new Set(),
+  currentCurrency: "$", // Código de moneda actual ($, CUP, MLC, etc)
+  currentView: { type: 'categories', catId: null, catName: null },
+  filteredProducts: [],
+  pagination: {
+    itemsPerPage: 8,
+    currentPage: 1
+  },
+  files: {
+    zelle: null,
+    tra: null,
+    mlc: null
   }
+};
 
-  setupPaymentListener();
-  updateCartUI();
-  setupFormValidation();
-  setupInfiniteScroll();
-  lucide.createIcons();
-  startBackgroundSync();
+const SOUNDS = {
+  notification: new Audio('https://onyxservices.github.io/onyxshop/sound/new.mp3')
+};
+
+// ==========================================
+// 2. ANALÍTICA Y NOTIFICACIONES
+// ==========================================
+
+/**
+ * Registra el evento de visualización de lista en Google Analytics.
+ */
+function trackCategoryView(categoryName, products) {
+  if (typeof gtag !== "function" || !products?.length) return;
+
+  gtag('event', 'view_item_list', {
+    item_list_name: categoryName,
+    items: products.slice(0, 20).map(p => ({
+      item_id: String(p.id),
+      item_name: p.name,
+      item_category: categoryName,
+      price: p.price, 
+      currency: AppState.currentCurrency === '$' ? 'USD' : 'CUP'
+    }))
+  });
+  console.log('[GA4] Evento view_item_list enviado:', categoryName);
 }
 
-/*** NOTIFICACIÓN DE PRODUCTO NUEVO (Derecha a Izquierda)*/
+/**
+ * Muestra una notificación visual y sonora de producto nuevo.
+ */
 function notifyNewProduct(categoryName) {
-  // Reproducir sonido
-  soundNewProduct.currentTime = 0;
-  soundNewProduct.play().catch(e => console.log("Audio esperando interacción"));
+  SOUNDS.notification.currentTime = 0;
+  SOUNDS.notification.play().catch(() => console.warn("Esperando interacción para audio"));
 
   const notif = document.createElement('div');
   notif.className = 'product-notification';
@@ -139,200 +79,155 @@ function notifyNewProduct(categoryName) {
     <div class="product-notif-icon"><i data-lucide="sparkles"></i></div>
     <div>
       <div style="font-size: 0.7rem; opacity: 0.8; text-transform: uppercase;">¡Recién llegado!</div>
-      <div style="font-size: 0.9rem;">Nuevo producto en ${categoryName} 🏃🏽 </div>
+      <div style="font-size: 0.9rem;">Nuevo producto en ${categoryName} 🏃🏽</div>
     </div>
   `;
   document.body.appendChild(notif);
   lucide.createIcons();
 
-  // Animación entrada
   setTimeout(() => notif.classList.add('active'), 100);
-
-  // Animación salida y borrado
   setTimeout(() => {
     notif.classList.remove('active');
     setTimeout(() => notif.remove(), 600);
   }, 8000);
 }
 
-/*** CARGA Y ACTUALIZACIÓN DE DATOS CON DETECCIÓN DE NOVEDADES***/
+// ==========================================
+// 3. GESTIÓN DE DATOS (API & SYNC)
+// ==========================================
+
+/**
+ * Refresca todos los datos desde Supabase y gestiona novedades.
+ * @param {boolean} isFirstLoad - Indica si es la carga inicial de la app.
+ */
 async function refreshData(isFirstLoad = false) {
   try {
-    const [newCats, newProds, newPays] = await Promise.all([
+    const [categories, products, payments] = await Promise.all([
       getCategories(),
       getAllProducts(),
       getPaymentMethods()
     ]);
 
-    const categories = newCats || [];
-    const products = newProds || [];
-
-    // Lógica de detección: Solo si no es la primera carga y hay productos nuevos
-    if (!isFirstLoad && products.length > 0) {
+    // Detección de productos nuevos (solo si no es la primera carga)
+    if (!isFirstLoad && products?.length > 0) {
       products.forEach(prod => {
-        if (!knownProductIds.has(String(prod.id))) {
+        if (!AppState.knownProductIds.has(String(prod.id))) {
           const cat = categories.find(c => String(c.id) === String(prod.category_id));
-          const catName = cat ? cat.name : "una categoría";
-          notifyNewProduct(catName);
+          notifyNewProduct(cat ? cat.name : "una categoría");
         }
       });
     }
 
-    // Actualizar conjunto de IDs conocidos
-    knownProductIds = new Set(products.map(p => String(p.id)));
+    // Actualización del Estado
+    AppState.knownProductIds = new Set(products.map(p => String(p.id)));
+    DB.categories = categories || [];
+    DB.products = products || [];
+    DB.paymentMethods = payments || [];
 
-    // Actualizar DB global
-    DB.categories = categories;
-    DB.products = products;
-    DB.paymentMethods = newPays || [];
-
-    if (DB.paymentMethods.length > 0) renderPaymentSelector();
-
-    // Refrescar vistas
-    if (currentView.type === 'categories') {
+    // Actualizar UI
+    renderPaymentSelector();
+    if (AppState.currentView.type === 'categories') {
       renderCategories();
-    } else if (currentView.type === 'products') {
-      filteredProducts = DB.products.filter(p => String(p.category_id) === String(currentView.catId));
-      softRefreshProducts();
+    } else {
+      updateFilteredProducts();
+      softRefreshProductGrid();
     }
   } catch (err) {
     console.error("Error al refrescar datos:", err);
   }
 }
 
-function startBackgroundSync() {
-  setTimeout(async function sync() {
-    await refreshData(false);
-    setTimeout(sync, 15000); 
-  }, 15000);
+/**
+ * Inicia el ciclo de sincronización en segundo plano.
+ */
+function startSyncTimers() {
+  // Sincronización general cada 15s
+  setInterval(() => refreshData(false), 15000);
 }
 
-function startCurrencySync() {
-  setInterval(async () => {
-    try {
-      const newPays = await getPaymentMethods();
-      // Solo actualizamos el DOM si los datos han cambiado para evitar parpadeos
-      if (newPays && JSON.stringify(newPays) !== JSON.stringify(DB.paymentMethods)) {
-        DB.paymentMethods = newPays;
-        renderPaymentSelector();
-        
-        // Refrescar precios en la vista actual si es necesario
-        if (currentView.type === 'products') {
-          softRefreshProducts();
-        }
-        updateCartUI();
-      }
-    } catch (err) {
-      console.error("Error al actualizar monedas en segundo plano:", err);
-    }
-  }, 5000); // 5000ms = 5 segundos
-}
+// ==========================================
+// 4. LÓGICA DE PRECIOS Y MONEDA
+// ==========================================
 
 /**
- * UI / RENDERIZADO
+ * Calcula el precio final basado en el método de pago seleccionado.
  */
-function ocultarSplash(el) {
-  if (!el) return;
-  el.style.opacity = '0';
-  setTimeout(() => {
-    el.style.display = 'none';
-    el.classList.add('splash-hidden');
-  }, 300);
-}
-
-function getFinalPrice(basePrice) {
-  const method = DB.paymentMethods.find(m => m.code === currentPaymentMethodCode) || 
+function getCalculatedPrice(basePrice) {
+  const method = DB.paymentMethods.find(m => m.code === AppState.currentCurrency) || 
                  { name: "Efectivo", mode: "none", value: 1, code: "$" };
   
   let final = parseFloat(basePrice);
-  // Si el código es $, usamos el símbolo, si es otra cosa (MLC, CUP), usamos el texto
-  let prefix = method.code === "$" ? "$" : method.code + " ";
+  const prefix = method.code === "$" ? "$" : `${method.code} `;
 
-  if (method.mode === 'percent') {
-    final = basePrice * (1 + (method.value / 100));
-  } else if (method.mode === 'divide') {
-    final = basePrice / method.value;
-  }
+  if (method.mode === 'percent') final *= (1 + (method.value / 100));
+  else if (method.mode === 'divide') final /= method.value;
 
   return { 
-    text: `${prefix}${final.toLocaleString(undefined, { 
-      minimumFractionDigits: 2, 
-      maximumFractionDigits: 2 
-    })}`, 
-    methodName: method.name 
+    text: `${prefix}${final.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 
+    methodName: method.name,
+    raw: final
   };
 }
+
+/**
+ * Renderiza el selector de moneda basado en los métodos activos.
+ */
 function renderPaymentSelector() {
   const sel = document.getElementById('payment-selector');
   if (!sel) return;
 
-  // FILTRO: Solo tomamos los métodos donde active sea true
-  const activeMethods = DB.paymentMethods.filter(m => m.active === true);
-
+  const activeMethods = DB.paymentMethods.filter(m => m.active);
   sel.innerHTML = activeMethods.map(m =>
-    `<option value="${m.code}" ${m.code === currentPaymentMethodCode ? 'selected' : ''}>${m.name}</option>`
+    `<option value="${m.code}" ${m.code === AppState.currentCurrency ? 'selected' : ''}>${m.name}</option>`
   ).join('');
-  
-  // Opcional: Si el método seleccionado actualmente se desactivó, 
-  // podrías querer resetearlo al primero disponible ($)
-  if (activeMethods.length > 0 && !activeMethods.find(m => m.code === currentPaymentMethodCode)) {
-      currentPaymentMethodCode = activeMethods[0].code;
-  }
-}
-function showCurrencyHint() {
-  // Verificar si ya se mostró en esta sesión
-  if (sessionStorage.getItem("currency_hint_seen")) return;
-
-  const hint = document.getElementById("currency-hint");
-  if (!hint) return;
-
-  // Aparecer después de 1.5 segundos de carga para que el usuario lo note
-  setTimeout(() => {
-    hint.classList.add("show");
-  }, 1500);
-
-  // Desaparecer después de 5 segundos de estar visible
-  setTimeout(() => {
-    hint.classList.remove("show");
-    // Guardar en sesión para que no vuelva a salir hasta que cierre el navegador
-    sessionStorage.setItem("currency_hint_seen", "true");
-  }, 6500); // 1.5s delay + 5s visible
 }
 
+// ==========================================
+// 5. RENDERIZADO DE UI (VISTAS)
+// ==========================================
 
+/**
+ * Muestra la vista de categorías.
+ */
 window.showCategories = () => {
-  currentView = { type: 'categories', catId: null, catName: null };
+  AppState.currentView = { type: 'categories', catId: null, catName: null };
   document.getElementById('products-view').style.display = 'none';
   document.getElementById('categories-view').style.display = 'block';
   renderCategories();
 };
 
+/**
+ * Muestra la vista de productos de una categoría específica.
+ */
 window.showProducts = (catId, catName) => {
-  currentView = { type: 'products', catId: catId, catName: catName };
+  AppState.currentView = { type: 'products', catId, catName };
   document.getElementById('categories-view').style.display = 'none';
   document.getElementById('products-view').style.display = 'block';
   document.getElementById('current-cat-name').innerText = catName;
 
+  AppState.pagination.currentPage = 1;
+  updateFilteredProducts();
+  
   const grid = document.getElementById('products-grid');
   grid.innerHTML = '';
-  currentPage = 1;
-  filteredProducts = DB.products.filter(p => 
-    String(p.category_id) === String(catId) && p.active === true
-  );
-
-  // 🔥 GA4 - Vista de categoría
-trackCategoryView(catName, filteredProducts);
-
+  
+  trackCategoryView(catName, AppState.filteredProducts);
   renderNextChunk();
   window.scrollTo(0, 0);
 };
+
+function updateFilteredProducts() {
+  AppState.filteredProducts = DB.products.filter(p => 
+    String(p.category_id) === String(AppState.currentView.catId) && p.active
+  );
+}
 
 function renderCategories() {
   const grid = document.getElementById('categories-grid');
   if (!grid) return;
   grid.innerHTML = DB.categories.map(cat => `
     <div class="card" onclick="showProducts('${cat.id}', '${cat.name}')" style="cursor:pointer">
-      <div class="card-media"><img src="${cat.image_url || 'https://picsum.photos/300'}" onerror="this.src='https://picsum.photos/300'"></div>
+      <div class="card-media"><img src="${cat.image_url || 'https://picsum.photos/300'}" loading="lazy"></div>
       <div class="card-body" style="text-align:center;">
         <div class="card-title" style="height:auto; font-size:0.9rem; font-weight:700;">${cat.name}</div>
       </div>
@@ -341,12 +236,16 @@ function renderCategories() {
   lucide.createIcons();
 }
 
+/**
+ * Carga el siguiente bloque de productos (Infinite Scroll).
+ */
 function renderNextChunk() {
   const grid = document.getElementById('products-grid');
   const sentinel = document.getElementById('infinite-sentinel');
+  const { currentPage, itemsPerPage } = AppState.pagination;
+
   const start = (currentPage - 1) * itemsPerPage;
-  const end = start + itemsPerPage;
-  const chunk = filteredProducts.slice(start, end);
+  const chunk = AppState.filteredProducts.slice(start, start + itemsPerPage);
 
   if (chunk.length === 0) {
     sentinel.classList.remove('active');
@@ -354,48 +253,43 @@ function renderNextChunk() {
   }
 
   sentinel.classList.add('active');
-  const html = chunk.map(p => productCardHTML(p)).join('');
-  grid.insertAdjacentHTML('beforeend', html);
+  grid.insertAdjacentHTML('beforeend', chunk.map(p => productCardHTML(p)).join(''));
   lucide.createIcons();
-  currentPage++;
+  AppState.pagination.currentPage++;
 
-  if (end >= filteredProducts.length) sentinel.classList.remove('active');
+  if (start + itemsPerPage >= AppState.filteredProducts.length) sentinel.classList.remove('active');
 }
 
-function softRefreshProducts() {
+/**
+ * Refresca la vista de productos actual sin reiniciar el scroll.
+ */
+function softRefreshProductGrid() {
   const grid = document.getElementById('products-grid');
-  if (!grid || currentView.type !== 'products') return;
-  const limit = (currentPage - 1) * itemsPerPage;
-  const visibleSet = filteredProducts.slice(0, Math.max(limit, itemsPerPage));
-  grid.innerHTML = visibleSet.map(p => productCardHTML(p)).join('');
+  if (!grid || AppState.currentView.type !== 'products') return;
+  
+  const limit = (AppState.pagination.currentPage - 1) * AppState.pagination.itemsPerPage;
+  const visibleItems = AppState.filteredProducts.slice(0, Math.max(limit, AppState.pagination.itemsPerPage));
+  grid.innerHTML = visibleItems.map(p => productCardHTML(p)).join('');
   lucide.createIcons();
 }
 
+/**
+ * Genera el HTML de una tarjeta de producto.
+ */
 function productCardHTML(p) {
-  const priceObj = getFinalPrice(p.price);
-  const isNew = isProductNew(p.created_at);
+  const priceObj = getCalculatedPrice(p.price);
+  const isNew = (new Date() - new Date(p.created_at)) / (1000 * 60 * 60) <= 12;
   const outOfStock = p.stock <= 0;
   
-  // Lógica de visualización de stock
-  let stockBadge = "";
-  if (outOfStock) {
-    stockBadge = `<span class="stock-badge oos">Agotado</span>`;
-  } else if (p.stock <= 5) {
-    stockBadge = `<span class="stock-badge low">¡Solo ${p.stock} disp.!</span>`;
-  } else {
-    stockBadge = `<span class="stock-badge in-stock">${p.stock} disponibles</span>`;
-  }
-
-  const newBadge = isNew ? `
-    <div class="ribbon-wrapper">
-      <div class="ribbon-new">NUEVO</div>
-    </div>` : '';
+  let stockBadge = outOfStock 
+    ? `<span class="stock-badge oos">Agotado</span>` 
+    : (p.stock <= 5 ? `<span class="stock-badge low">¡Solo ${p.stock}!</span>` : `<span class="stock-badge in-stock">${p.stock} disponibles</span>`);
 
   return `
     <div class="card" style="${outOfStock ? 'opacity: 0.8;' : ''}">
       <div class="card-media">
-        ${newBadge} 
-        <img src="${p.image_url || 'https://picsum.photos/300'}" loading="lazy" onerror="this.src='https://picsum.photos/300'" style="${outOfStock ? 'filter: grayscale(1);' : ''}">
+        ${isNew ? '<div class="ribbon-wrapper"><div class="ribbon-new">NUEVO</div></div>' : ''} 
+        <img src="${p.image_url || 'https://picsum.photos/300'}" loading="lazy" style="${outOfStock ? 'filter: grayscale(1);' : ''}">
         ${outOfStock ? '<div class="sold-out-overlay">AGOTADO</div>' : ''}
       </div>
       <div class="card-body">
@@ -404,8 +298,7 @@ function productCardHTML(p) {
           ${stockBadge}
         </div>
         <div class="card-price">${priceObj.text}</div>
-        <button class="btn-action" 
-                ${outOfStock ? 'disabled style="background: #444; cursor: not-allowed;"' : `onclick="addToCart('${p.id}', event)"`}>
+        <button class="btn-action" ${outOfStock ? 'disabled' : `onclick="addToCart('${p.id}', event)"`}>
           <i data-lucide="${outOfStock ? 'slash' : 'shopping-cart'}" style="width:14px"></i> 
           ${outOfStock ? 'SIN STOCK' : 'AGREGAR'}
         </button>
@@ -414,839 +307,430 @@ function productCardHTML(p) {
   `;
 }
 
-/**
- * CARRITO
- */
+// ==========================================
+// 6. GESTIÓN DEL CARRITO
+// ==========================================
+
 window.addToCart = (id, event) => {
   const product = DB.products.find(p => String(p.id) === String(id));
   if (!product || product.stock <= 0) return;
 
-  const existing = cart.find(item => String(item.id) === String(id));
-  
+  const existing = AppState.cart.find(item => String(item.id) === String(id));
   if (existing) {
-    if (existing.qty >= product.stock) {
-      showTopError(`Solo quedan ${product.stock} disponibles`);
-      return;
-    }
-    existing.qty += 1;
+    if (existing.qty >= product.stock) return showTopError("Stock máximo alcanzado");
+    existing.qty++;
   } else {
-    cart.push({ ...product, qty: 1 });
+    AppState.cart.push({ ...product, qty: 1 });
   }
 
-  // --- 1. EFECTO DE SONIDO ---
-  soundAddCart.currentTime = 0; // Reinicia el audio por si se pulsa rápido
-  soundAddCart.play().catch(e => console.log("Error audio:", e));
+  playCartAnimation(event);
+  saveAndRefreshCart();
+  showToast("✅ Producto añadido");
+};
 
-  // --- 2. EFECTO VISUAL (Icono Volador) ---
+window.updateQty = (index, delta) => {
+  const item = AppState.cart[index];
+  const prod = DB.products.find(p => String(p.id) === String(item.id));
+
+  if (delta > 0 && item.qty >= prod.stock) return showTopError("Límite de stock alcanzado");
+  
+  item.qty += delta;
+  if (item.qty <= 0) AppState.cart.splice(index, 1);
+  saveAndRefreshCart();
+};
+
+window.removeFromCart = (index) => {
+  AppState.cart.splice(index, 1);
+  saveAndRefreshCart();
+};
+
+function saveAndRefreshCart() {
+  localStorage.setItem('cuban_store_cart', JSON.stringify(AppState.cart));
+  updateCartUI();
+}
+
+function updateCartUI() {
+  const list = document.getElementById('cart-list');
+  const totalEl = document.getElementById('cart-total');
+  const countEl = document.getElementById('cart-count');
+  
+  if (AppState.cart.length === 0) {
+    list.innerHTML = `<p class="empty-msg">Tu carrito está vacío</p>`;
+    totalEl.innerText = "$0.00";
+    countEl.innerText = "0";
+    return;
+  }
+
+  let totalBase = 0;
+  list.innerHTML = AppState.cart.map((item, i) => {
+    const live = DB.products.find(p => String(p.id) === String(item.id)) || item;
+    totalBase += (parseFloat(live.price) * item.qty);
+    const pObj = getCalculatedPrice(live.price);
+
+    return `
+      <div class="cart-item">
+        <img src="${live.image_url}" class="cart-img">
+        <div class="cart-item-info">
+          <h4>${live.name}</h4>
+          <span class="price-tag">${pObj.text}</span>
+          <div class="qty-controls">
+            <button onclick="updateQty(${i}, -1)"><i data-lucide="minus"></i></button>
+            <span>${item.qty}</span>
+            <button onclick="updateQty(${i}, 1)"><i data-lucide="plus"></i></button>
+          </div>
+        </div>
+        <button class="delete-btn" onclick="removeFromCart(${i})"><i data-lucide="trash-2"></i></button>
+      </div>
+    `;
+  }).join('');
+
+  totalEl.innerText = getCalculatedPrice(totalBase).text;
+  countEl.innerText = AppState.cart.reduce((acc, curr) => acc + curr.qty, 0);
+  lucide.createIcons();
+}
+
+// ==========================================
+// 7. PROCESO DE PAGO Y FINALIZACIÓN
+// ==========================================
+
+/**
+ * Valida stock y lo descuenta de Supabase antes de finalizar.
+ */
+async function validateAndSubtractStock() {
+  if (AppState.cart.length === 0) return false;
+  try {
+    await Promise.all(AppState.cart.map(item => subtractProductStock(item.id, item.qty)));
+    return true;
+  } catch (err) {
+    console.error("Error stock:", err);
+    return false;
+  }
+}
+
+/**
+ * Función central de envío de orden.
+ */
+window.sendOrder = async () => {
+  const form = {
+    name: document.getElementById('order-name'),
+    phone: document.getElementById('order-phone'),
+    address: document.getElementById('order-address'),
+    ref: document.getElementById('order-reference')
+  };
+
+  // Validación básica
+  let isValid = true;
+  if (form.name.value.trim().length < 3) { form.name.classList.add('invalid'); isValid = false; }
+  if (!/^[56]\d{7}$/.test(form.phone.value.trim())) { form.phone.classList.add('invalid'); isValid = false; }
+  if (form.address.value.trim().length < 5) { form.address.classList.add('invalid'); isValid = false; }
+
+  if (!isValid) return showTopError("Revisa los datos del formulario");
+
+  // Flujo según moneda
+  const currency = AppState.currentCurrency;
+  if (currency === 'Z') return openPaymentModal('zelle');
+  if (currency === 'Tra') return openPaymentModal('tra');
+  if (currency === 'mlc') return openPaymentModal('mlc');
+
+  // Pago en Efectivo / Estándar
+  await processStandardOrder(form);
+};
+
+async function processStandardOrder(form) {
+  showToast("Procesando pedido...");
+  const stockOk = await validateAndSubtractStock();
+  if (!stockOk) return showTopError("Se agotó el stock de un producto");
+
+  const orderId = `CS-EF-${Date.now().toString().slice(-6)}`;
+  const totalObj = getCalculatedPrice(AppState.cart.reduce((acc, i) => acc + (i.price * i.qty), 0));
+
+  try {
+    await createOrderInSupabase({
+      order_id: orderId,
+      customer_name: form.name.value,
+      phone: form.phone.value,
+      address: form.address.value,
+      reference: form.ref.value,
+      items: AppState.cart,
+      total_text: totalObj.text,
+      payment_method: totalObj.methodName,
+      status: 'completed'
+    });
+
+    const waText = formatWhatsAppMessage(orderId, form, totalObj.text);
+    window.open(`https://wa.me/+5353910527?text=${encodeURIComponent(waText)}`, '_blank');
+    
+    finalizeOrder();
+  } catch (e) {
+    showTopError("Error al registrar pedido");
+  }
+}
+
+// ==========================================
+// 8. MODALES DE PAGO (ZELLE, MLC, TRANSFERENCIA)
+// ==========================================
+
+function openPaymentModal(type) {
+  toggleCart(false);
+  const totalBase = AppState.cart.reduce((acc, i) => acc + (i.price * i.qty), 0);
+  const totalObj = getCalculatedPrice(totalBase);
+
+  // Actualizar resumen en el modal correspondiente
+  document.getElementById(`${type}-summary-total`).textContent = totalObj.text;
+  document.getElementById(`${type}-summary-items`).textContent = AppState.cart.length;
+
+  // Resetear el input y mostrar
+  resetModalState(type);
+  document.getElementById(`${type}-overlay`).classList.add('active');
+  lucide.createIcons();
+}
+
+function resetModalState(type) {
+  AppState.files[type] = null;
+  document.getElementById(`${type}-preview-container`).style.display = 'none';
+  document.getElementById(`${type}-receipt-file`).value = '';
+  document.getElementById(`confirm-${type}-btn`).disabled = true;
+}
+
+window.handleReceiptInput = (type, event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  AppState.files[type] = file;
+  const preview = document.getElementById(`${type}-preview`);
+  preview.src = URL.createObjectURL(file);
+  document.getElementById(`${type}-preview-container`).style.display = 'block';
+  document.getElementById(`confirm-${type}-btn`).disabled = false;
+};
+
+/**
+ * Confirmación genérica para pagos con comprobante.
+ */
+window.confirmReceiptPayment = async (type) => {
+  const file = AppState.files[type];
+  const btn = document.getElementById(`confirm-${type}-btn`);
+  const loader = document.getElementById(`${type}-upload-progress`);
+
+  btn.disabled = true;
+  loader.style.display = 'block';
+
+  try {
+    const stockOk = await validateAndSubtractStock();
+    if (!stockOk) throw new Error("Stock insuficiente");
+
+    const orderId = `CS-${type.toUpperCase()}-${Date.now().toString().slice(-6)}`;
+    const uploadedUrl = await uploadReceiptToSupabase(file, orderId);
+    
+    const name = document.getElementById('order-name').value;
+    const phone = document.getElementById('order-phone').value;
+    const totalObj = getCalculatedPrice(AppState.cart.reduce((acc, i) => acc + (i.price * i.qty), 0));
+
+    await createOrderInSupabase({
+      order_id: orderId,
+      customer_name: name,
+      phone: phone,
+      address: document.getElementById('order-address').value,
+      items: AppState.cart,
+      total_text: totalObj.text,
+      payment_method: type.toUpperCase(),
+      receipt_url: uploadedUrl,
+      status: 'pending'
+    });
+
+    const waText = `👑 PAGO ${type.toUpperCase()}\nOrden: #${orderId}\nCliente: ${name}\nTotal: ${totalObj.text}\nComprobante: ${uploadedUrl}`;
+    window.location.href = `https://wa.me/+5353910527?text=${encodeURIComponent(waText)}`;
+
+    finalizeOrder();
+    document.getElementById(`${type}-overlay`).classList.remove('active');
+  } catch (e) {
+    showTopError(e.message);
+    btn.disabled = false;
+    loader.style.display = 'none';
+  }
+};
+
+// ==========================================
+// 9. UTILIDADES Y ANIMACIONES
+// ==========================================
+
+function playCartAnimation(event) {
+  SOUNDS.notification.currentTime = 0;
+  SOUNDS.notification.play().catch(() => {});
+
   const btn = event.currentTarget;
   const rect = btn.getBoundingClientRect();
-  const cartBtn = document.getElementById('cart-btn-anchor');
-  const cartRect = cartBtn.getBoundingClientRect();
+  const cartBtn = document.getElementById('cart-btn-anchor').getBoundingClientRect();
 
-  // Crear el clon volador
   const flyer = document.createElement('div');
   flyer.className = 'flying-icon';
   flyer.innerHTML = '<i data-lucide="shopping-cart"></i>';
   flyer.style.left = `${rect.left + rect.width / 2}px`;
   flyer.style.top = `${rect.top + rect.height / 2}px`;
   document.body.appendChild(flyer);
-  lucide.createIcons(); // Para que el icono se vea
+  lucide.createIcons();
 
-  // Animación hacia el carrito
   requestAnimationFrame(() => {
-    flyer.style.left = `${cartRect.left + cartRect.width / 2}px`;
-    flyer.style.top = `${cartRect.top + cartRect.height / 2}px`;
-    flyer.style.transform = 'scale(0.5)';
+    flyer.style.left = `${cartBtn.left + cartBtn.width / 2}px`;
+    flyer.style.top = `${cartBtn.top + cartBtn.height / 2}px`;
+    flyer.style.transform = 'scale(0.3) rotate(360deg)';
     flyer.style.opacity = '0';
   });
 
-  // Limpiar flyer y hacer rebotar el carrito al terminar
-  setTimeout(() => {
-    flyer.remove();
-    cartBtn.classList.add('cart-bounce-active');
-    setTimeout(() => cartBtn.classList.remove('cart-bounce-active'), 400);
-  }, 800);
-
-  // --- 3. ACTUALIZAR ESTADO ---
-  saveCartToStorage();
-  updateCartUI();
-  showToast("✅ Producto añadido");
-};
-
-async function processStockDeduction() {
-  try {
-    // Verificamos que el carrito no esté vacío
-    if (!cart || cart.length === 0) return true;
-
-    // Ejecutamos el descuento para cada producto en el carrito
-    const promises = cart.map(item => subtractProductStock(item.id, item.qty));
-    await Promise.all(promises);
-    return true;
-  } catch (err) {
-    console.error("Error detallado descontando stock:", err);
-    return false;
-  }
+  setTimeout(() => flyer.remove(), 800);
 }
 
-window.updateQty = (index, delta) => {
-  if (!cart[index]) return;
-  const product = DB.products.find(p => String(p.id) === String(cart[index].id));
-  
-  if (delta > 0 && cart[index].qty >= product.stock) {
-    showTopError("Límite de stock alcanzado");
-    return;
-  }
+function finalizeOrder() {
+  AppState.cart = [];
+  saveAndRefreshCart();
+  document.querySelectorAll('.cart-form input').forEach(i => i.value = '');
+  toggleCart(false);
+  showToast("¡Pedido procesado con éxito!");
+}
 
-  cart[index].qty += delta;
-  if (cart[index].qty <= 0) cart.splice(index, 1);
-  saveCartToStorage();
-  updateCartUI();
-};
+function formatWhatsAppMessage(orderId, form, totalText) {
+  const items = AppState.cart.map(i => `• ${i.qty}x ${i.name}`).join('\n');
+  return `👑 *NUEVO PEDIDO*\n#${orderId}\n\n👤 *Cliente:* ${form.name.value}\n📍 *Dir:* ${form.address.value}\n📞 *Tel:* +53${form.phone.value}\n\n🛍️ *Productos:*\n${items}\n\n💰 *Total:* ${totalText}`;
+}
 
-window.removeFromCart = (index) => {
-  cart.splice(index, 1);
-  saveCartToStorage();
-  updateCartUI();
-};
+// Globales para HTML
+window.toggleCart = (open) => document.getElementById('cart-overlay').classList.toggle('active', open);
+window.closeModal = (id) => document.getElementById(id).classList.remove('active');
 
-function updateCartUI() {
-  const list = document.getElementById('cart-list');
-  const totalEl = document.getElementById('cart-total');
-  let totalBase = 0, totalItems = 0;
+// ==========================================
+// 10. INICIALIZACIÓN
+// ==========================================
 
-  if (cart.length === 0) {
-    list.innerHTML = `<p style="text-align:center; color:var(--text-muted); margin-top:40px;">Tu carrito está vacío</p>`;
-    totalEl.innerText = "$0";
-    document.getElementById('cart-count').innerText = "0";
-    return;
-  }
+async function init() {
+  // Cargar carrito local
+  const saved = localStorage.getItem('cuban_store_cart');
+  if (saved) AppState.cart = JSON.parse(saved);
 
-  list.innerHTML = cart.map((item, i) => {
-    // BUSCAR PRECIO ACTUALIZADO: Buscamos el producto en DB.products para tener el precio real
-    const liveProduct = DB.products.find(p => String(p.id) === String(item.id));
-    
-    // Si por alguna razón el producto ya no existe en la DB, usamos el precio guardado como fallback
-    const currentPrice = liveProduct ? parseFloat(liveProduct.price) : parseFloat(item.price);
-    
-    totalBase += (currentPrice * item.qty);
-    totalItems += item.qty;
-    
-    // Obtenemos el precio formateado según la moneda actual
-    const pObj = getFinalPrice(currentPrice);
-
-    return `
-      <div class="cart-item">
-        <img src="${item.image_url}" style="width:50px; height:50px; border-radius:6px; object-fit:cover" onerror="this.src='https://picsum.photos/300'">
-        <div class="cart-item-info" style="flex:1">
-          <h4 style="margin:0; font-size:0.85rem">${item.name}</h4>
-          <span style="color:var(--accent); font-weight:700">${pObj.text}</span>
-          <div class="qty-controls">
-            <button class="qty-btn" onclick="updateQty(${i}, -1)"><i data-lucide="minus" style="width:14px"></i></button>
-            <span>${item.qty}</span>
-            <button class="qty-btn" onclick="updateQty(${i}, 1)"><i data-lucide="plus" style="width:14px"></i></button>
-          </div>
-        </div>
-        <button class="delete-btn" onclick="removeFromCart(${i})">
-          <i data-lucide="trash-2" style="width:16px"></i>
-        </button>
-      </div>
-    `;
-  }).join('');
-
-  const finalTotal = getFinalPrice(totalBase);
-  totalEl.innerText = finalTotal.text;
-  document.getElementById('cart-count').innerText = totalItems;
+  // UI Inicial
   lucide.createIcons();
-}
+  updateCartUI();
+  
+  // Listener de Moneda
+  document.getElementById('payment-selector')?.addEventListener('change', (e) => {
+    AppState.currentCurrency = e.target.value;
+    softRefreshProductGrid();
+    updateCartUI();
+  });
 
-// En la función sendOrder original, asegúrate de cerrar el carrito cuando se procese Zelle
+
+  // ==========================================
+// 11. INTEGRACIÓN CON KODULAR / APP INVENTOR
+// ==========================================
 
 /**
- * UTILIDADES
+ * Gestiona el botón atrás físico del teléfono.
  */
-function setupInfiniteScroll() {
-  const sentinel = document.getElementById('infinite-sentinel');
-  if (!sentinel) return;
-  observer = new IntersectionObserver((entries) => {
-    if (entries[0].isIntersecting && filteredProducts.length > 0 && currentView.type === 'products') {
-      renderNextChunk();
-    }
-  }, { rootMargin: '200px' });
-  observer.observe(sentinel);
-}
-
-function setupFormValidation() {
-  document.querySelectorAll('.cart-form input').forEach(input => {
-    input.addEventListener('input', () => input.classList.remove('invalid'));
-  });
-}
-
-window.toggleCart = (open) => document.getElementById('cart-overlay').classList.toggle('active', open);
-window.toggleCoffeeModal = (open) => {
-  document.getElementById('coffee-overlay').classList.toggle('active', open);
-  if(open) setTimeout(() => lucide.createIcons(), 100);
-};
-
-function saveCartToStorage() { localStorage.setItem('cuban_store_cart', JSON.stringify(cart)); }
-function loadCartFromStorage() { 
-  const s = localStorage.getItem('cuban_store_cart'); 
-  if (s) { try { cart = JSON.parse(s); } catch (e) { cart = []; } } 
-}
-
-function showTopError(m) {
-  const r = document.getElementById('toast-root');
-  const t = document.createElement('div');
-  t.className = 'toast-error';
-  t.innerHTML = `<i data-lucide="alert-circle"></i> <span>${m}</span>`;
-  r.appendChild(t);
-  lucide.createIcons();
-  setTimeout(() => t.remove(), 3000);
-}
-
-function showToast(m) {
-  const r = document.getElementById('toast-root');
-  const t = document.createElement('div');
-  t.className = 'toast';
-  t.innerText = m;
-  r.appendChild(t);
-  setTimeout(() => t.remove(), 2000);
-}
-
 window.onBackPressed = function() {
-  if (document.getElementById('cart-overlay').classList.contains('active')) { toggleCart(false); return; }
-  if (document.getElementById('coffee-overlay').classList.contains('active')) { toggleCoffeeModal(false); return; }
-  if (currentView.type === 'products') { showCategories(); return; }
-  if (window.AppInventor) window.AppInventor.setWebViewString("salir");
+  // 1. Si el carrito está abierto, cerrarlo
+  if (document.getElementById('cart-overlay').classList.contains('active')) {
+    toggleCart(false);
+    return;
+  }
+
+  // 2. Si hay algún modal de pago abierto, cerrarlo
+  const overlays = ['zelle-overlay', 'mlc-overlay', 'tra-overlay', 'coffee-overlay'];
+  for (let id of overlays) {
+    const el = document.getElementById(id);
+    if (el && el.classList.contains('active')) {
+      el.classList.remove('active');
+      return;
+    }
+  }
+
+  // 3. Si estamos viendo productos, volver a categorías
+  if (AppState.currentView.type === 'products') {
+    window.showCategories();
+    return;
+  }
+
+  // 4. Si estamos en el home (categorías), enviar señal de salida a Kodular
+  if (window.AppInventor) {
+    window.AppInventor.setWebViewString("salir");
+  }
 };
 
+/**
+ * Abre la app de SMS o envía el comando a Kodular.
+ */
+window.openSmsApp = (phone) => {
+  if (window.AppInventor) {
+    // Señal para que Kodular use el componente SMS interno
+    window.AppInventor.setWebViewString("SMS:" + phone);
+  } else {
+    // Navegador estándar
+    window.location.href = "sms:+53" + phone;
+  }
+};
+
+/**
+ * Copia texto al portapapeles con soporte para WebView antiguos.
+ */
 window.copyToClipboard = function(text) {
   if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).then(() => showToast("✅ ¡Copiado!")).catch(() => fallbackCopy(text));
-  } else { fallbackCopy(text); }
+    navigator.clipboard.writeText(text)
+      .then(() => showToast("✅ ¡Copiado!"))
+      .catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
 };
 
 function fallbackCopy(text) {
-  const ta = document.createElement("textarea"); ta.value = text;
-  document.body.appendChild(ta); ta.select();
-  try { document.execCommand('copy'); showToast("✅ ¡Copiado!"); } catch (e) { showTopError("Error al copiar"); }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast("✅ ¡Copiado!");
+  } catch (e) {
+    showTopError("Error al copiar");
+  }
   document.body.removeChild(ta);
 }
 
 /**
- * MODAL Y FLUJO ZELLE
+ * Menú de soporte flotante
  */
-/**
- * MODAL Y FLUJO ZELLE - VERSIÓN CORREGIDA
- */
-window.openZelleModal = () => {
-  // 1. CERRAR EL CARRITO SI ESTÁ ABIERTO
-  toggleCart(false);
-  
-  // 2. Calcular resumen
-  let totalBase = 0;
-  let totalItems = 0;
-  
-  cart.forEach(item => {
-    totalBase += (parseFloat(item.price) * item.qty);
-    totalItems += item.qty;
-  });
-  
-  const finalTotal = getFinalPrice(totalBase);
-  
-  // 3. Actualizar resumen en modal
-  document.getElementById('zelle-summary-items').textContent = totalItems;
-  document.getElementById('zelle-summary-total').textContent = finalTotal.text;
-  
-  // 4. Resetear estado COMPLETO (eliminar vista previa)
-  resetZelleModalState();
-  
-  // 5. Mostrar modal
-  toggleZelleModal(true);
-  lucide.createIcons();
-};
-
-// Función para resetear completamente el estado del modal Zelle
-function resetZelleModalState() {
-  zelleReceiptFile = null;
-  zelleReceiptUrl = null;
-  
-  // Limpiar vista previa si existe
-  const preview = document.getElementById('receipt-preview');
-  if (preview && preview.src && preview.src.startsWith('blob:')) {
-    URL.revokeObjectURL(preview.src);
-    preview.src = '';
-  }
-  
-  // Resetear UI
-  document.getElementById('receipt-preview-container').style.display = 'none';
-  document.getElementById('upload-progress').style.display = 'none';
-  document.getElementById('file-error').style.display = 'none';
-  document.getElementById('file-error').textContent = '';
-  document.getElementById('confirm-zelle-btn').disabled = true;
-  document.getElementById('select-receipt-btn').innerHTML = '<i data-lucide="upload"></i> SELECCIONAR IMAGEN';
-  document.getElementById('select-receipt-btn').disabled = false;
-  document.getElementById('receipt-file').value = '';
-  document.getElementById('file-info').textContent = '';
-}
-
-window.toggleZelleModal = (open) => {
-  const overlay = document.getElementById('zelle-overlay');
-  overlay.classList.toggle('active', open);
-  
-  // Si se está cerrando, limpiar completamente
-  if (!open) {
-    resetZelleModalState();
-  } else {
-    setTimeout(() => lucide.createIcons(), 100);
-  }
-};
-
-window.handleReceiptFileInput = (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  
-  // Limpiar estado previo si existe
-  if (zelleReceiptFile && document.getElementById('receipt-preview').src) {
-    URL.revokeObjectURL(document.getElementById('receipt-preview').src);
-  }
-  
-  // Validaciones
-  const validTypes = ['image/png', 'image/jpeg'];
-  const maxSize = 5 * 1024 * 1024; // 5MB
-  
-  if (!validTypes.includes(file.type)) {
-    showFileError('Solo se permiten imágenes PNG o JPEG');
-    document.getElementById('receipt-file').value = '';
-    return;
-  }
-  
-  if (file.size > maxSize) {
-    showFileError('La imagen no debe superar 5 MB');
-    document.getElementById('receipt-file').value = '';
-    return;
-  }
-  
-  // Mostrar vista previa
-  zelleReceiptFile = file;
-  const previewUrl = URL.createObjectURL(file);
-  const preview = document.getElementById('receipt-preview');
-  const container = document.getElementById('receipt-preview-container');
-  const fileInfo = document.getElementById('file-info');
-  
-  preview.src = previewUrl;
-  container.style.display = 'block';
-  fileInfo.textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
-  
-  // Configurar botón eliminar (nueva función mejorada)
-  const removeBtn = document.getElementById('remove-receipt');
-  removeBtn.onclick = () => {
-    if (preview.src && preview.src.startsWith('blob:')) {
-      URL.revokeObjectURL(preview.src);
-    }
-    zelleReceiptFile = null;
-    preview.src = '';
-    container.style.display = 'none';
-    document.getElementById('receipt-file').value = '';
-    document.getElementById('confirm-zelle-btn').disabled = true;
-    document.getElementById('file-error').style.display = 'none';
-    document.getElementById('file-error').textContent = '';
-    lucide.createIcons();
-  };
-  
-  // Habilitar confirmación
-  document.getElementById('confirm-zelle-btn').disabled = false;
-  document.getElementById('file-error').style.display = 'none';
-  
-  lucide.createIcons();
-};
-
-window.removeReceiptPreview = function() {
-  // Liberar URL del blob si existe
-  const preview = document.getElementById('receipt-preview');
-  if (preview && preview.src && preview.src.startsWith('blob:')) {
-    URL.revokeObjectURL(preview.src);
-    preview.src = '';
-  }
-  
-  // Resetear variables
-  zelleReceiptFile = null;
-  zelleReceiptUrl = null;
-  
-  // Ocultar vista previa
-  document.getElementById('receipt-preview-container').style.display = 'none';
-  
-  // Limpiar input file
-  document.getElementById('receipt-file').value = '';
-  
-  // Deshabilitar botón confirmar
-  document.getElementById('confirm-zelle-btn').disabled = true;
-  
-  // Ocultar errores
-  document.getElementById('file-error').style.display = 'none';
-  document.getElementById('file-error').textContent = '';
-  
-  // Actualizar iconos
-  lucide.createIcons();
-};
-
-function showFileError(message) {
-  const errorEl = document.getElementById('file-error');
-  errorEl.textContent = message;
-  errorEl.style.display = 'block';
-  document.getElementById('confirm-zelle-btn').disabled = true;
-}
-
-// --- FUNCIÓN PARA PROCESAR EL PAGO DE ZELLE ---
-window.confirmZellePayment = async () => {
-  if (!zelleReceiptFile) {
-    showTopError("Por favor, sube el comprobante de Zelle");
-    return;
-  }
-
-  const btn = document.getElementById('confirm-zelle-btn');
-  const loader = document.getElementById('upload-progress');
-  const errorMsg = document.getElementById('file-error');
-
-  btn.disabled = true;
-  loader.style.display = 'block';
-  errorMsg.style.display = 'none';
-
-  try {
-    // 1. PRIMERO: Intentar descontar el stock (Solo en este momento)
-    const stockOk = await processStockDeduction();
-    if (!stockOk) {
-      throw new Error("No hay stock suficiente para completar el pedido.");
-    }
-
-    // 2. Generar ID y subir comprobante
-    const orderId = `CS-Z-${Date.now().toString().slice(-6)}`;
-    const uploadedUrl = await uploadReceiptToSupabase(zelleReceiptFile, orderId);
-    
-    const name = document.getElementById('order-name').value.trim();
-    const phone = document.getElementById('order-phone').value.trim();
-    const addr = document.getElementById('order-address').value.trim();
-    const ref = document.getElementById('order-reference').value.trim();
-
-    let totalBase = 0;
-    const itemsList = cart.map(item => {
-      totalBase += (parseFloat(item.price) * item.qty);
-      const pObj = getFinalPrice(item.price);
-      return `• *${item.qty}x* ${item.name} _(${pObj.text})_`;
-    }).join('\n');
-    
-    const finalTotal = getFinalPrice(totalBase);
-
-    // 3. Registrar la orden con el stock ya descontado
-    await createOrderInSupabase({
-      order_id: orderId,
-      customer_name: name,
-      phone: phone,
-      address: addr,
-      reference: ref,
-      items: cart,
-      total_text: finalTotal.text,
-      payment_method: 'Zelle',
-      receipt_url: uploadedUrl,
-      status: 'pending'
-    });
-
-    const text = encodeURIComponent(
-      `👑 *NUEVO PAGO POR ZELLE*\nPedido: #${orderId}\n\n` +
-      `👤 *Cliente:* ${name}\n` +
-      `📍 *Dirección:* ${addr}\n` +
-      (ref ? `🏠 *Ref:* ${ref}\n` : '') +
-      `📞 *Tel:* +53${phone}\n` +
-      `📸 *Comprobante:* ${uploadedUrl}\n\n` +
-      `🛍️ *PRODUCTOS:*\n${itemsList}\n\n` +
-      `💰 *TOTAL:* ${finalTotal.text}`
-    );
-
-    window.location.href = `https://wa.me/+5353910527?text=${text}`;
-
-    // 4. Limpieza (Solo ocurre si todo el proceso fue exitoso)
-    cart = [];
-    clearOrderForm();
-    saveCartToStorage();
-    updateCartUI();
-    toggleZelleModal(false);
-    toggleCart(false);
-
-  } catch (e) {
-    console.error('Error al procesar el pago Zelle:', e);
-    errorMsg.textContent = e.message || "Error al enviar el pago.";
-    errorMsg.style.display = 'block';
-    btn.disabled = false;
-    loader.style.display = 'none';
-  }
-};
-
-window.openMlcModal = () => {
-  toggleCart(false);
-  let totalBase = 0, totalItems = 0;
-  cart.forEach(item => { totalBase += (parseFloat(item.price) * item.qty); totalItems += item.qty; });
-  const finalTotal = getFinalPrice(totalBase);
-  document.getElementById('mlc-summary-items').textContent = totalItems;
-  document.getElementById('mlc-summary-total').textContent = finalTotal.text;
-  resetMlcModalState();
-  toggleMlcModal(true);
-};
-
-window.toggleMlcModal = (open) => {
-  document.getElementById('mlc-overlay').classList.toggle('active', open);
-  if(open) setTimeout(() => lucide.createIcons(), 100);
-};
-
-function resetMlcModalState() {
-  mlcReceiptFile = null;
-  document.getElementById('mlc-preview-container').style.display = 'none';
-  document.getElementById('mlc-upload-progress').style.display = 'none';
-  document.getElementById('confirm-mlc-btn').disabled = true;
-  document.getElementById('mlc-receipt-file').value = '';
-}
-
-window.handleMlcReceiptFileInput = (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  mlcReceiptFile = file;
-  document.getElementById('mlc-preview').src = URL.createObjectURL(file);
-  document.getElementById('mlc-preview-container').style.display = 'block';
-  document.getElementById('confirm-mlc-btn').disabled = false;
-  lucide.createIcons();
-};
-
-window.removeMlcReceiptPreview = () => { resetMlcModalState(); };
-
-window.confirmMlcPayment = async () => {
-  if (!mlcReceiptFile) return;
-
-  const btn = document.getElementById('confirm-mlc-btn');
-  const loader = document.getElementById('mlc-upload-progress');
-  btn.disabled = true;
-  loader.style.display = 'block';
-
-  try {
-    // 1. Intentar descontar el stock justo ahora
-    const stockOk = await processStockDeduction();
-    if (!stockOk) {
-      throw new Error("Lo sentimos, se agotó el stock mientras procesaba.");
-    }
-
-    const orderId = `CS-MLC-${Date.now().toString().slice(-6)}`;
-    const uploadedUrl = await uploadReceiptToSupabase(mlcReceiptFile, orderId);
-    
-    const name = document.getElementById('order-name').value.trim();
-    const phone = document.getElementById('order-phone').value.trim();
-    const addr = document.getElementById('order-address').value.trim();
-    const ref = document.getElementById('order-reference').value.trim();
-
-    let totalBase = 0;
-    const itemsList = cart.map(item => {
-      totalBase += (parseFloat(item.price) * item.qty);
-      return `• *${item.qty}x* ${item.name}`;
-    }).join('\n');
-    
-    const finalTotal = getFinalPrice(totalBase);
-
-    await createOrderInSupabase({
-      order_id: orderId,
-      customer_name: name,
-      phone: phone,
-      address: addr,
-      reference: ref,
-      items: cart,
-      total_text: finalTotal.text,
-      payment_method: 'MLC',
-      receipt_url: uploadedUrl,
-      status: 'pending'
-    });
-
-    const text = encodeURIComponent(
-      `👑 *NUEVO PEDIDO - MLC | Onyx Shop*\nPedido: #${orderId}\n\n` +
-      `👤 *Cliente:* ${name}\n` +
-      `📍 *Dirección:* ${addr}\n` +
-      (ref ? `🏠 *Referencia:* ${ref}\n` : '') +
-      `📞 *Tel:* +53${phone}\n` +
-      `📸 *Comprobante:* ${uploadedUrl}\n\n` +
-      `🛍️ *PRODUCTOS:*\n${itemsList}\n\n` +
-      `💰 *TOTAL:* ${finalTotal.text}`
-    );
-
-    setTimeout(() => { window.location.href = `https://wa.me/+5353910527?text=${text}`; }, 100);
-
-    cart = [];
-    clearOrderForm();
-    saveCartToStorage();
-    updateCartUI();
-    toggleMlcModal(false);
-    toggleCart(false);
-  } catch (e) {
-    console.error(e);
-    alert(e.message || "Error al enviar el pago");
-    btn.disabled = false;
-    loader.style.display = 'none';
-  }
-};
-
-window.openTraModal = () => {
-  toggleCart(false);
-  let totalBase = 0, totalItems = 0;
-  cart.forEach(item => { totalBase += (parseFloat(item.price) * item.qty); totalItems += item.qty; });
-  const finalTotal = getFinalPrice(totalBase);
-  document.getElementById('tra-summary-items').textContent = totalItems;
-  document.getElementById('tra-summary-total').textContent = finalTotal.text;
-  resetTraModalState();
-  toggleTraModal(true);
-};
-
-window.toggleTraModal = (open) => {
-  document.getElementById('tra-overlay').classList.toggle('active', open);
-  if(open) setTimeout(() => lucide.createIcons(), 100);
-};
-
-function resetTraModalState() {
-  traReceiptFile = null;
-  document.getElementById('tra-preview-container').style.display = 'none';
-  document.getElementById('tra-upload-progress').style.display = 'none';
-  document.getElementById('confirm-tra-btn').disabled = true;
-  document.getElementById('tra-receipt-file').value = '';
-}
-
-window.handleTraReceiptFileInput = (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  traReceiptFile = file;
-  document.getElementById('tra-preview').src = URL.createObjectURL(file);
-  document.getElementById('tra-preview-container').style.display = 'block';
-  document.getElementById('confirm-tra-btn').disabled = false;
-  lucide.createIcons();
-};
-
-window.removeTraReceiptPreview = () => { resetTraModalState(); };
-
-window.confirmTraPayment = async () => {
-  if (!traReceiptFile) {
-    showTopError("Falta el comprobante de transferencia");
-    return;
-  }
-
-  const btn = document.getElementById('confirm-tra-btn');
-  const loader = document.getElementById('tra-upload-progress');
-  const errorMsg = document.getElementById('tra-file-error');
-
-  btn.disabled = true;
-  loader.style.display = 'block';
-  errorMsg.style.display = 'none';
-
-  try {
-    // 1. PRIMERO: Intentar descontar stock
-    // Si falla, el proceso se detiene y no se gasta ancho de banda subiendo la imagen
-    const stockOk = await processStockDeduction();
-    if (!stockOk) {
-      throw new Error("No hay stock suficiente para algunos productos de tu carrito.");
-    }
-
-    // 2. Generar ID único
-    const orderId = `CS-TR-${Date.now().toString().slice(-6)}`;
-    
-    // 3. Subir imagen a Supabase
-    const uploadedUrl = await uploadReceiptToSupabase(traReceiptFile, orderId);
-    
-    // 4. Capturar datos del formulario
-    const name = document.getElementById('order-name').value.trim();
-    const phone = document.getElementById('order-phone').value.trim();
-    const addr = document.getElementById('order-address').value.trim();
-    const ref = document.getElementById('order-reference').value.trim();
-
-    // 5. Preparar resumen
-    let totalBase = 0;
-    const itemsList = cart.map(item => {
-      totalBase += (parseFloat(item.price) * item.qty);
-      const pObj = getFinalPrice(item.price);
-      return `• *${item.qty}x* ${item.name} _(${pObj.text})_`;
-    }).join('\n');
-    
-    const finalTotal = getFinalPrice(totalBase);
-
-    // 6. Registrar pedido en base de datos
-    await createOrderInSupabase({
-      order_id: orderId,
-      customer_name: name,
-      phone: phone,
-      address: addr,
-      reference: ref,
-      items: cart,
-      total_text: finalTotal.text,
-      payment_method: 'Transferencia',
-      receipt_url: uploadedUrl,
-      status: 'pending'
-    });
-
-    // 7. Mensaje de WhatsApp
-    const text = encodeURIComponent(
-      `👑 *NUEVO PEDIDO - TRANSFERENCIA*\nPedido: #${orderId}\n\n` +
-      `👤 *Cliente:* ${name}\n` +
-      `📍 *Dirección:* ${addr}\n` +
-      (ref ? `🏠 *Ref:* ${ref}\n` : '') +
-      `📞 *Tel:* +53${phone}\n` +
-      `📸 *Comprobante:* ${uploadedUrl}\n\n` +
-      `🛍️ *PRODUCTOS:*\n${itemsList}\n\n` +
-      `💰 *TOTAL:* ${finalTotal.text}`
-    );
-
-    setTimeout(() => {
-      window.location.href = `https://wa.me/+5353910527?text=${text}`;
-    }, 100);
-
-    // 8. Limpieza tras éxito
-    cart = [];
-    clearOrderForm();
-    saveCartToStorage();
-    updateCartUI();
-    toggleTraModal(false);
-    toggleCart(false);
-
-  } catch (e) {
-    console.error('Error en transferencia:', e);
-    // IMPORTANTE: Mostrar el error específico (ej: falta de stock)
-    errorMsg.textContent = e.message || "Error al procesar el pago. Reintente.";
-    errorMsg.style.display = 'block';
-    btn.disabled = false;
-    loader.style.display = 'none';
-  }
-};
-
-
-// Modificar la función sendOrder existente para incluir flujo Zelle
-window.sendOrder = async () => {
-  const nameInput = document.getElementById('order-name');
-  const addrInput = document.getElementById('order-address');
-  const refInput = document.getElementById('order-reference');
-  const phoneInput = document.getElementById('order-phone');
-
-  const name = nameInput.value.trim();
-  const addr = addrInput.value.trim();
-  const ref = refInput.value.trim();
-  const phone = phoneInput.value.trim();
-
-  // 1. Validaciones de formulario
-  if (cart.length === 0) { showTopError("El carrito está vacío"); return; }
-  
-  let hasError = false;
-  if (name.length < 3) { nameInput.classList.add('invalid'); hasError = true; }
-  if (addr.length < 5) { addrInput.classList.add('invalid'); hasError = true; }
-  if (!/^[56]\d{7}$/.test(phone)) { phoneInput.classList.add('invalid'); hasError = true; }
-  
-  if (hasError) { 
-    showTopError("Revisa los datos marcados"); 
-    return; 
-  }
-
-  // 2. Redirección según método de pago (Sin descontar stock preventivamente)
-  if (currentPaymentMethodCode === 'Z') {
-    openZelleModal();
-  } else if (currentPaymentMethodCode === 'Tra') {
-    openTraModal();
-  } else if (currentPaymentMethodCode === 'mlc') {
-    openMlcModal();
-  } else {
-    // CASO EFECTIVO / OTROS (Sin comprobante)
-    // Aquí sí descontamos stock justo antes de terminar porque no hay pasos intermedios
-    showToast("Confirmando stock...");
-    const ok = await processStockDeduction();
-    if (!ok) { 
-      showTopError("Lo sentimos, no hay stock suficiente de algún producto."); 
-      return; 
-    }
-
-    const orderId = `CS-EF-${Date.now().toString().slice(-6)}`;
-    let totalBase = 0;
-    const itemsList = cart.map(item => {
-      totalBase += (parseFloat(item.price) * item.qty);
-      const pObj = getFinalPrice(item.price);
-      return `• *${item.qty}x* ${item.name} _(${pObj.text})_`;
-    }).join('\n');
-
-    const finalTotalObj = getFinalPrice(totalBase);
-
-    try {
-        showToast("Registrando pedido...");
-        await createOrderInSupabase({
-            order_id: orderId,
-            customer_name: name,
-            phone: phone,
-            address: addr,
-            reference: ref,
-            items: cart,
-            total_text: finalTotalObj.text,
-            payment_method: finalTotalObj.methodName,
-            status: 'completed' 
-        });
-
-        const text = encodeURIComponent(
-          `👑 *NUEVO PEDIDO | Onyx Shop*\nPedido: #${orderId}\n\n` +
-          `👤 *Cliente:* ${name}\n` +
-          `📍 *Dirección:* ${addr}\n` +
-          (ref ? `🏠 *Referencia:* ${ref}\n` : '') +
-          `📞 *Teléfono:* +53${phone}\n\n` +
-          `🛍️ *PRODUCTOS:*\n${itemsList}\n\n` +
-          `💰 *TOTAL A PAGAR:* ${finalTotalObj.text}`
-        );
-
-        window.open(`https://wa.me/+5353910527?text=${text}`, '_blank');
-        
-        // Limpieza final
-        cart = [];
-        clearOrderForm();
-        saveCartToStorage();
-        updateCartUI();
-        toggleCart(false);
-        showToast("¡Pedido enviado!");
-    } catch (e) {
-        console.error(e);
-        showTopError("Error al guardar en la base de datos");
-    }
-  }
-};
-
-function clearOrderForm() {
-  const inputs = document.querySelectorAll('#order-form input');
-  inputs.forEach(i => {
-    i.value = '';
-    i.classList.remove('invalid');
-  });
-}
-
-
-// Función para abrir/cerrar el menú de soporte
 window.toggleSupportMenu = (e) => {
-  e.stopPropagation(); // Evita que el clic cierre el menú inmediatamente
+  if (e) e.stopPropagation();
   const menu = document.getElementById('support-menu');
-  menu.classList.toggle('active');
-  
-  // Refrescar iconos por si acaso
-  if(menu.classList.contains('active')) {
-    lucide.createIcons();
+  if (menu) {
+    menu.classList.toggle('active');
+    if (menu.classList.contains('active')) lucide.createIcons();
   }
 };
 
-// Cerrar el menú si el usuario hace clic en cualquier otra parte de la pantalla
+// Cerrar menús al tocar fuera
 document.addEventListener('click', () => {
   const menu = document.getElementById('support-menu');
   if (menu) menu.classList.remove('active');
 });
 
-// ... código anterior ...
-
-window.openSmsApp = (phone) => {
-  // Verificamos si la app se está ejecutando dentro de Kodular/App Inventor
-  if (window.AppInventor) {
-    // Enviamos una señal a Kodular con el prefijo "SMS:"
-    window.AppInventor.setWebViewString("SMS:" + phone);
-  } else {
-    // Si se abre en un navegador normal, usamos el método estándar
-    window.location.href = "sms:" + phone;
+  // Carga de Datos
+  const splash = document.getElementById('splash-screen');
+  try {
+    await refreshData(true);
+  } finally {
+    if (splash) {
+      splash.style.opacity = '0';
+      setTimeout(() => splash.style.display = 'none', 500);
+    }
   }
-};
 
-// Iniciar app
-init();
+  // Infinite Scroll Observer
+  const sentinel = document.getElementById('infinite-sentinel');
+  if (sentinel) {
+    new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && AppState.currentView.type === 'products') renderNextChunk();
+    }).observe(sentinel);
+  }
+
+  startSyncTimers();
+}
+
+document.addEventListener('DOMContentLoaded', init);

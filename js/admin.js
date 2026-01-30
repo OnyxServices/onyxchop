@@ -249,7 +249,6 @@ window.handleAddProduct = async () => {
  * ==========================================
  */
 
-// Cambiar estado Visible/Oculto
 window.handleToggleProductStatus = async (id, currentStatus) => {
     try {
         await api.updateProduct(id, { active: !currentStatus });
@@ -260,7 +259,6 @@ window.handleToggleProductStatus = async (id, currentStatus) => {
     }
 };
 
-// Abrir modal de edición con datos cargados
 window.openEditProduct = (id) => {
     const prod = state.allProducts.find(p => String(p.id) === String(id));
     if (!prod) return;
@@ -274,7 +272,6 @@ window.openEditProduct = (id) => {
     openModal('modal-edit-product');
 };
 
-// Guardar cambios del producto
 window.handleUpdateProduct = async () => {
     const id = document.getElementById('edit-prod-id').value;
     const name = document.getElementById('edit-prod-name').value;
@@ -285,12 +282,9 @@ window.handleUpdateProduct = async () => {
 
     try {
         let fields = { name, price, stock, cost };
-        
-        // Si hay una nueva imagen, subirla
         if (file) {
             fields.image_url = await api.uploadImage('products', file);
         }
-
         await api.updateProduct(id, fields);
         closeModal('modal-edit-product');
         await refreshData();
@@ -300,7 +294,6 @@ window.handleUpdateProduct = async () => {
     }
 };
 
-// Eliminar producto
 window.handleDeleteProduct = async (id) => {
     const confirm = await customConfirm("¿Eliminar producto?", "Esta acción borrará el producto permanentemente.");
     if (!confirm) return;
@@ -373,10 +366,15 @@ window.loadOrdersSummary = async () => {
             return;
         }
 
+        // --- RENDERIZADO DE ÓRDENES ---
         container.innerHTML = orders.map(order => {
             const price = parseFloat(String(order.total_text || "0").replace(/[^0-9.]/g, "")) || 0;
             const method = (order.payment_method || "").toLowerCase();
             const myProfit = price * (percentage / 100);
+
+            // Lógica para detectar si requiere comprobante
+            const isReceiptMethod = method.includes("zelle") || method.includes("mlc") || method.includes("tra") || method.includes("cup");
+            const receiptUrl = order.receipt_url;
 
             stats.totalRev += price; 
             stats.totalProfit += myProfit; 
@@ -392,10 +390,21 @@ window.loadOrdersSummary = async () => {
                         <span class="order-total">$${price.toFixed(2)}</span>
                     </div>
                     <p>👤 ${order.customer_name}</p>
-                    <div style="display:flex; justify-content:space-between; margin-top:10px;">
+                    <div style="display:flex; justify-content:space-between; margin-top:10px; align-items: center;">
                         <span class="badge">💳 ${order.payment_method}</span>
                         <span style="color:var(--accent); font-weight:bold;">+$${myProfit.toFixed(2)}</span>
                     </div>
+                    
+                    ${isReceiptMethod && receiptUrl ? `
+                        <div class="receipt-actions" style="margin-top:15px; display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                            <button class="btn btn-primary-glass" style="font-size:0.7rem; padding:8px;" onclick="window.viewReceipt('${receiptUrl}')">
+                                👁️ Ver
+                            </button>
+                            <button class="btn btn-edit" style="font-size:0.7rem; padding:8px;" onclick="window.downloadReceipt('${receiptUrl}', '${order.id}')">
+                                📥 Bajar
+                            </button>
+                        </div>
+                    ` : ''}
                 </div>
             `;
         }).join('');
@@ -403,6 +412,7 @@ window.loadOrdersSummary = async () => {
         updateStatsUI(stats, orders.length);
 
     } catch (e) {
+        console.error("Error al cargar reportes:", e);
         showToast("Error al cargar reportes", "error");
     }
 };
@@ -432,7 +442,6 @@ function updateStatsUI(stats, count) {
  */
 async function renderInvestmentAnalysis() {
     try {
-        // 1. Obtener datos necesarios
         const [products, orders, deductionValue] = await Promise.all([
             api.getAllProducts(),
             api.getOrders(),
@@ -442,21 +451,17 @@ async function renderInvestmentAnalysis() {
         const tableBody = document.getElementById('investment-products-list');
         const percentage = parseFloat(deductionValue) || 0;
         
-        // Variables para cálculos
-        let globalInvTotal = 0;           // Inversión total en stock actual
-        let globalGananciaPotencial = 0;  // Ganancia si se vende todo el stock
-        let totalRevenuePotencial = 0;    // Ventas totales potenciales (Precio * Stock)
-        let globalRealProfit = 0;         // Ganancia real de órdenes 'completed'
+        let globalInvTotal = 0;
+        let globalGananciaPotencial = 0;
+        let totalRevenuePotencial = 0;
+        let globalRealProfit = 0;
 
-        // --- CÁLCULO DE GANANCIA REAL (Órdenes Completadas) ---
         const completedOrders = orders.filter(o => o.status === 'completed');
         completedOrders.forEach(order => {
             const price = parseFloat(String(order.total_text || "0").replace(/[^0-9.]/g, "")) || 0;
-            // La ganancia real se basa en la comisión configurada
             globalRealProfit += (price * (percentage / 100));
         });
 
-        // --- CÁLCULO DE STOCK Y POTENCIAL ---
         tableBody.innerHTML = '';
         products.forEach(p => {
             const costo = parseFloat(p.cost || 0);
@@ -487,16 +492,13 @@ async function renderInvestmentAnalysis() {
             `;
         });
 
-        // --- LÓGICA DE PUNTO DE EQUILIBRIO ---
-        // ¿Cuánto dinero falta para recuperar la inversión inicial?
         const deficit = globalInvTotal - globalRealProfit;
         const breakEvenStatusEl = document.getElementById('break-even-status');
         const progressEl = document.getElementById('recovery-progress');
         
-        // Calcular promedio de ganancia por venta para estimar "cuántas ventas faltan"
-        // Usamos el margen promedio del inventario
         const avgMarginDecimal = totalRevenuePotencial > 0 ? (globalGananciaPotencial / totalRevenuePotencial) : 0;
-        const avgPrice = products.length > 0 ? (totalRevenuePotencial / products.reduce((a, b) => a + (b.stock || 0), 0)) : 0;
+        const totalStockUnits = products.reduce((a, b) => a + (b.stock || 0), 0);
+        const avgPrice = totalStockUnits > 0 ? (totalRevenuePotencial / totalStockUnits) : 0;
         const avgProfitPerUnit = avgPrice * avgMarginDecimal;
 
         if (deficit <= 0) {
@@ -515,9 +517,7 @@ async function renderInvestmentAnalysis() {
             progressEl.value = porcentajeRecuperado;
         }
 
-        // --- ACTUALIZAR UI ---
         const format = (val) => `$${val.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-        
         document.getElementById('total-investment').innerText = format(globalInvTotal);
         document.getElementById('total-profit').innerText = format(globalGananciaPotencial);
         document.getElementById('total-real-profit').innerText = format(globalRealProfit);
@@ -570,14 +570,12 @@ window.showMainPanel = () => {
     document.getElementById('section-categories').classList.remove('hidden');
 };
 
-// Inicialización al cargar el DOM
 document.addEventListener('DOMContentLoaded', () => {
     if (localStorage.getItem('admin_token') === 'active_session') {
         showDashboard();
     }
 });
 
-// Categorías
 window.handleAddCategory = async () => {
     const name = document.getElementById('new-cat-name').value;
     const file = document.getElementById('new-cat-img').files[0];
@@ -603,16 +601,14 @@ window.handleDeleteCategory = async (id) => {
     } catch (e) { showToast("Error al eliminar", "error"); }
 };
 
-// Configuración de Comisión (Reporte de Ventas)
 window.saveDeductionSetting = async (val) => {
     try {
         await api.updateDeductionPercent(parseFloat(val));
-        loadOrdersSummary(); // Recargar para aplicar el nuevo cálculo
+        loadOrdersSummary();
         showToast("Comisión actualizada", "success");
     } catch (e) { showToast("Error al guardar configuración", "error"); }
 };
 
-// Limpiar historial
 window.handleClearAllOrders = async () => {
     const ok = await customConfirm("¿Vaciar historial?", "Se borrarán todos los pedidos y fotos de comprobantes.");
     if (!ok) return;
@@ -621,4 +617,31 @@ window.handleClearAllOrders = async () => {
         loadOrdersSummary();
         showToast("Historial vaciado", "success");
     } catch (e) { showToast("Error al vaciar", "error"); }
+};
+
+/**
+ * ==========================================
+ *   UTILIDADES DE COMPROBANTES
+ * ==========================================
+ */
+
+window.viewReceipt = (url) => {
+    window.open(url, '_blank');
+};
+
+window.downloadReceipt = async (url, orderId) => {
+    try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `comprobante_orden_${String(orderId).slice(-5)}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+        showToast("Error al descargar la imagen", "error");
+    }
 };

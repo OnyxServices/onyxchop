@@ -219,13 +219,23 @@
     </div>
     
     <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.4;">
-      Por favor transfiera al siguiente número de tarjeta y suba la captura del SMS de la transacción.
+      Por favor transfiera al siguiente número de tarjeta o confirme el pago al número telefónico indicado.
     </p>
     
-    <!-- Cuenta de Transferencia (Misma del Café) -->
-    <div class="card-copy-box">
+    <!-- Cuenta de Transferencia -->
+    <p style="color: var(--text-muted); font-size: 0.75rem; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;">Número de Tarjeta:</p>
+    <div class="card-copy-box" style="margin-top: 0;">
       <span class="card-number">9204-1299-7869-4034</span>
       <button class="copy-btn" onclick="copyToClipboard('9204-1299-7869-4034')">
+        <i data-lucide="copy" style="width: 16px; height: 16px;"></i>
+      </button>
+    </div>
+
+    <!-- NUEVO CAMPO: Número de teléfono -->
+    <p style="color: var(--text-muted); font-size: 0.75rem; margin-top: 15px; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;">Confirmar pago a este número:</p>
+    <div class="card-copy-box" style="margin-top: 0;">
+      <span class="card-number">53910527</span>
+      <button class="copy-btn" onclick="copyToClipboard('53910527')">
         <i data-lucide="copy" style="width: 16px; height: 16px;"></i>
       </button>
     </div>
@@ -242,10 +252,13 @@
       </div>
     </div>
     
-    <!-- Input de imagen -->
     <div style="margin: 20px 0;">
       <input type="file" id="tra-receipt-file" accept="image/png, image/jpeg, .png, .jpg, .jpeg" 
              style="display: none;" onchange="handleTraReceiptFileInput(event)">
+
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 8px; position: center;">
+          Suba una captura del SMS de la transferencia
+        </p>     
       
       <button id="tra-select-btn" class="btn-action" style="width: 100%;" onclick="document.getElementById('tra-receipt-file').click()">
         <i data-lucide="upload"></i> SELECCIONAR COMPROBANTE

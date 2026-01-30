@@ -773,3 +773,20 @@ tbody tr:hover {
     font-size: 0.8rem;
   }
 }
+
+/* Estilos para las acciones del comprobante en la tarjeta */
+.receipt-actions .btn {
+    height: 35px;
+    font-size: 0.75rem !important;
+}
+
+.btn-primary-glass {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--primary);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.btn-primary-glass:hover {
+    background: var(--primary);
+    color: white;
+}
